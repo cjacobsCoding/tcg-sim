@@ -2,6 +2,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashMap;
+use std::any::Any;
 use std::io::{self, Write};
 
 #[repr(u8)]
@@ -110,13 +111,57 @@ struct CreatureStats
     toughness: u8,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum CardFragmentKind
+{
+    Creature,
+}
+
+trait Fragment: Any + Send + Sync
+{
+    fn as_any(&self) -> &dyn Any;
+    fn kind(&self) -> CardFragmentKind;
+    fn box_clone(&self) -> Box<dyn Fragment>;
+}
+
 #[derive(Clone, Debug)]
+struct CreatureFragment
+{
+    stats: CreatureStats,
+}
+
+impl Fragment for CreatureFragment
+{
+    fn as_any(&self) -> &dyn Any
+    {
+        self
+    }
+
+    fn kind(&self) -> CardFragmentKind
+    {
+        CardFragmentKind::Creature
+    }
+    fn box_clone(&self) -> Box<dyn Fragment>
+    {
+        Box::new(CreatureFragment { stats: self.stats })
+    }
+}
+
+impl Clone for Box<dyn Fragment>
+{
+    fn clone(&self) -> Box<dyn Fragment>
+    {
+        self.box_clone()
+    }
+}
+
+#[derive(Clone)]
 struct Card
 {
     name: &'static str,
     card_types: Vec<CardType>,
     cost: u32,
-    stats: Option<CreatureStats>,
+    fragments: HashMap<CardFragmentKind, Box<dyn Fragment>>,
 }
 
 impl Card
@@ -125,12 +170,6 @@ impl Card
     {
         self.card_types.iter().any(|ct| *ct == t)
     }
-
-    fn is_creature(&self) -> bool
-    {
-        self.is_type(CardType::Creature)
-    }
-
     fn add_type(&mut self, t: CardType)
     {
         if !self.card_types.contains(&t)
@@ -144,11 +183,38 @@ impl Card
         if let Some(pos) = self.card_types.iter().position(|ct| *ct == t)
         {
             self.card_types.remove(pos);
-            if t == CardType::Creature
-            {
-                self.stats = None;
-            }
         }
+    }
+}
+
+mod creature
+{
+    use super::{Card, CardType, CardFragmentKind, CreatureFragment, CreatureStats};
+
+    pub fn is_creature(card: &Card) -> bool
+    {
+        card.card_types.iter().any(|ct| *ct == CardType::Creature)
+            || card.fragments.contains_key(&CardFragmentKind::Creature)
+    }
+
+    pub fn creature_stats(card: &Card) -> Option<CreatureStats>
+    {
+        card.fragments.get(&CardFragmentKind::Creature).and_then(|f|
+            f.as_any().downcast_ref::<CreatureFragment>().map(|cf| cf.stats)
+        )
+    }
+
+    pub fn add_creature_fragment(card: &mut Card, power: u8, toughness: u8)
+    {
+        card.fragments.insert(
+            CardFragmentKind::Creature,
+            Box::new(CreatureFragment { stats: CreatureStats { power, toughness } }),
+        );
+    }
+
+    pub fn remove_creature_fragment(card: &mut Card)
+    {
+        card.fragments.remove(&CardFragmentKind::Creature);
     }
 }
 
@@ -173,7 +239,7 @@ fn forest() -> Card
         name: "Forest",
         card_types: vec![CardType::Land],
         cost: 0,
-        stats: None,
+        fragments: HashMap::new(),
     }
 }
 
@@ -184,7 +250,14 @@ fn grizzly_bears() -> Card
         name: "Grizzly Bears",
         card_types: vec![CardType::Creature],
         cost: 2,
-        stats: Some(CreatureStats { power: 2, toughness: 2 }),
+        fragments: {
+            let mut m = HashMap::new();
+            m.insert(
+                CardFragmentKind::Creature,
+                Box::new(CreatureFragment { stats: CreatureStats { power: 2, toughness: 2 } }) as Box<dyn Fragment>,
+            );
+            m
+        },
     }
 }
 
@@ -318,11 +391,11 @@ impl GameState
                             break;
                         }
 
-                        let castable;
-                        {
-                            let hand = self.zones.get(&Zone::Hand).unwrap();
-                            castable = hand[i].is_creature() && hand[i].cost <= self.lands;
-                        }
+                                let castable;
+                                {
+                                    let hand = self.zones.get(&Zone::Hand).unwrap();
+                                    castable = crate::creature::is_creature(&hand[i]) && hand[i].cost <= self.lands;
+                                }
 
                         if castable
                         {
@@ -353,9 +426,9 @@ impl GameState
             {
                 let battlefield = self.zones.get(&Zone::Battlefield).unwrap();
                 let mut damage = 0;
-                for creature in battlefield.iter()
+                for card in battlefield.iter()
                 {
-                    damage += creature.stats.map(|s| s.power as u32).unwrap_or(0);
+                    damage += crate::creature::creature_stats(card).map(|s| s.power as u32).unwrap_or(0);
                 }
 
                 self.life -= damage as i32;
@@ -477,9 +550,9 @@ impl GameState
                     let mut card_groups: HashMap<&str, (u8, u8, bool, u32)> = HashMap::new();
                     for card in cards.iter()
                     {
-                        let power = card.stats.map(|s| s.power).unwrap_or(0);
-                        let toughness = card.stats.map(|s| s.toughness).unwrap_or(0);
-                        let is_creature = card.is_creature();
+                        let power = crate::creature::creature_stats(card).map(|s| s.power).unwrap_or(0);
+                        let toughness = crate::creature::creature_stats(card).map(|s| s.toughness).unwrap_or(0);
+                        let is_creature = crate::creature::is_creature(card);
                         card_groups.entry(card.name)
                             .and_modify(|(_, _, _, count)| *count += 1)
                             .or_insert((power, toughness, is_creature, 1));
@@ -724,23 +797,27 @@ mod tests
     fn card_composition_and_type_mutation()
     {
         let f = forest();
-        assert!(!f.is_creature());
-        assert!(f.stats.is_none());
+        assert!(!crate::creature::is_creature(&f));
+        assert!(crate::creature::creature_stats(&f).is_none());
 
         let mut g = grizzly_bears();
-        assert!(g.is_creature());
-        assert!(g.stats.is_some());
-        assert_eq!(g.stats.unwrap().power, 2);
+        assert!(crate::creature::is_creature(&g));
+        assert!(crate::creature::creature_stats(&g).is_some());
+        assert_eq!(crate::creature::creature_stats(&g).unwrap().power, 2);
 
-        // remove creature type clears stats
+        // remove creature type (doesn't automatically remove fragment)
         g.remove_type(CardType::Creature);
-        assert!(!g.is_creature());
-        assert!(g.stats.is_none());
+        assert!(!g.is_type(CardType::Creature));
 
-        // add creature type back and set stats
+        // fragment still present until explicitly removed
+        crate::creature::remove_creature_fragment(&mut g);
+        assert!(!crate::creature::is_creature(&g));
+        assert!(crate::creature::creature_stats(&g).is_none());
+
+        // add creature type back and set creature fragment
         g.add_type(CardType::Creature);
-        g.stats = Some(CreatureStats { power: 3, toughness: 3 });
-        assert!(g.is_creature());
-        assert_eq!(g.stats.unwrap().power, 3);
+        crate::creature::add_creature_fragment(&mut g, 3, 3);
+        assert!(crate::creature::is_creature(&g));
+        assert_eq!(crate::creature::creature_stats(&g).unwrap().power, 3);
     }
 }
