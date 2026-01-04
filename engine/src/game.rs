@@ -174,9 +174,55 @@ impl GameState
                     }
                 }
 
-                // Cast up to ONE creature using lands on battlefield as mana
+                // Cast as many creatures as we are able!
                 {
-                    let mut cast_one = false;
+                    let mut available_mana;
+                    {
+                        available_mana = self.zones.get(&Zone::Battlefield).unwrap().iter().filter(|c| c.is_type(crate::card::CardType::Land)).count() as u32;
+                    }
+
+                    let mut i = 0;
+                    loop
+                    {
+                        let castable;
+                        {
+                            let hand = self.zones.get(&Zone::Hand).unwrap();
+                            castable = crate::creature::is_creature(&hand[i]) && hand[i].cost <= available_mana;
+                        }
+
+                        if castable
+                        {
+                            // Remove card first
+                            let mut card = 
+                            {
+                                let hand = self.zones.get_mut(&Zone::Hand).unwrap();
+                                hand.remove(i)
+                            };
+
+                            vlog!(ELoggingVerbosity::Verbose, "Cast {}", card.name);
+
+                            // Newly cast creatures have summoning sickness
+                            crate::creature::set_summoning_sickness(&mut card, true);
+
+                            available_mana -= card.cost;
+
+                            // Put the card onto the battlefield
+                            let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                            battlefield.push(card);
+                        }
+                        else
+                        {
+                            i += 1;
+                        }
+
+                        let hand_len = self.zones.get(&Zone::Hand).unwrap().len();
+                        if i >= hand_len
+                        {
+                            break;
+                        }
+                    }
+
+                    /*let mut cast_one = false;
                     let mut i = 0;
                     loop
                     {
@@ -220,7 +266,7 @@ impl GameState
                         {
                             i += 1;
                         }
-                    }
+                    }*/
                 }
 
                 self.step = GameStep::Combat;
