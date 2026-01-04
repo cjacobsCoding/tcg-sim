@@ -1,0 +1,49 @@
+# =====================
+# Rust / Cargo
+# =====================
+
+# All target dirs (workspace + crates)
+**/target/
+
+# Optional: rustfmt backup files
+**/*.rs.bk
+
+# =====================
+# Binaries / Artifacts
+# =====================
+
+*.exe
+*.dll
+*.so
+*.dylib
+
+# =====================
+# IDEs / Editors
+# =====================
+
+.vscode/
+.idea/
+*.code-workspace
+
+# =====================
+# OS junk
+# =====================
+
+.DS_Store
+Thumbs.db
+
+# =====================
+# Logs / temp files
+# =====================
+
+*.log
+*~
+.#*
+
+# =====================
+# Node / web (future-proofing)
+# =====================
+
+node_modules/
+dist/
+build/

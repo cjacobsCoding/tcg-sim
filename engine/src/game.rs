@@ -99,6 +99,11 @@ impl GameState
             step: GameStep::StartTurn,
         }
     }
+
+    pub fn new_default() -> Self {
+        let deck = Deck::example(); // or however you create a starter deck
+        Self::new(&deck)
+    }
 }
 
 impl GameState 
@@ -169,11 +174,17 @@ impl GameState
                     }
                 }
 
-                // Cast creatures using lands on battlefield as mana
+                // Cast up to ONE creature using lands on battlefield as mana
                 {
+                    let mut cast_one = false;
                     let mut i = 0;
                     loop
                     {
+                        if cast_one
+                        {
+                            break;  // Only cast one creature per main phase
+                        }
+                        
                         let hand_len = self.zones.get(&Zone::Hand).unwrap().len();
                         if i >= hand_len
                         {
@@ -203,6 +214,7 @@ impl GameState
 
                             let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
                             battlefield.push(card);
+                            cast_one = true;  // Stop after casting one creature
                         }
                         else
                         {
@@ -503,10 +515,12 @@ mod tests
         let mut gs = GameState { zones, life: 20, turns: 0, step: GameStep::Main };
         gs.step();
 
-        // Both creatures should have been cast if mana allowed (4 lands, 2 creatures at 2 mana each)
-        assert_eq!(gs.zones.get(&Zone::Battlefield).unwrap().len(), 6); // 4 lands + 2 creatures
+        // Only ONE creature should be cast per main phase (4 lands available, but can only cast 1 creature)
+        assert_eq!(gs.zones.get(&Zone::Battlefield).unwrap().len(), 5); // 4 lands + 1 creature
         // Verify we have the 4 lands still on battlefield
         assert_eq!(gs.zones.get(&Zone::Battlefield).unwrap().iter().filter(|c| c.is_type(crate::card::CardType::Land)).count(), 4);
+        // One creature should be in hand still
+        assert_eq!(gs.zones.get(&Zone::Hand).unwrap().len(), 1);
     }
 
     #[test]

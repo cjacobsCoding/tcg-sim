@@ -182,6 +182,20 @@ impl Deck
     {
         self.cards.iter().filter(|c| c.is_type(card_type)).count()
     }
+
+    pub fn example() -> Deck
+    {
+        let mut cards = Vec::new();
+        // default example deck: 29 lands, 31 nonlands (grizzly bears)
+        for _ in 0..29 {
+            cards.push(forest());
+        }
+        for _ in 0..31 {
+            cards.push(grizzly_bears());
+        }
+
+        Deck { cards }
+    }
 }
 
 pub fn forest() -> Card 

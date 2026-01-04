@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TCG Sim</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="controls">
+    <button onclick="doStep('step')">Step Phase (s)</button>
+    <button onclick="doStep('turn')">Step Turn (t)</button>
+    <button onclick="doStep('game')">Skip Game (g)</button>
+    <button onclick="doStep('deck')">Skip Deck (d)</button>
+    <button onclick="doStep('all')">Run All (r)</button>
+    <button onclick="restart()">Restart</button>
+    <button onclick="stopServer()">Stop Server</button>
+  </div>
+
+  <div class="game-info">
+    <div class="info-item">
+      <label>Phase:</label>
+      <span id="phase">Unknown</span>
+    </div>
+    <div class="info-item">
+      <label>Life:</label>
+      <span id="life">20</span>
+    </div>
+    <div class="info-item">
+      <label>Turns:</label>
+      <span id="turns">0</span>
+    </div>
+  </div>
+
+  <div class="deck-info">
+    <h3>Simulation Info</h3>
+    <div id="deck-composition">Deck: Loading...</div>
+    <div id="results">Results: Waiting for data...</div>
+  </div>
+
+  <div class="battlefield-container">
+    <h3>Battlefield</h3>
+    <div id="battlefield-grizzlies" class="grizzlies-section"></div>
+    <div id="battlefield-forests" class="forests-section"></div>
+  </div>
+
+  <div class="hand-container">
+    <h3>Hand</h3>
+    <div id="hand"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
