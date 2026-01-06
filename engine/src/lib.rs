@@ -45,6 +45,7 @@ macro_rules! vlog
 pub mod card;
 pub mod creature;
 pub mod game;
+pub mod tappable;
 pub mod sim;
 
 pub use crate::card::*;

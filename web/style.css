@@ -17,61 +17,6 @@ body {
 .controls {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
-}
-
-.controls button {
-  padding: 10px 20px;
-  font-size: 16px;
-  background-color: #4a90e2;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.controls button:hover {
-  background-color: #357abd;
-}
-
-.game-info {
-  display: flex;
-  gap: 30px;
-  margin-bottom: 30px;
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.info-item {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.info-item label {
-  color: #aaa;
-}
-
-.info-item span {
-  color: #4a90e2;
-  font-size: 20px;
-}
-
-/* Deck info section */
-.deck-info {
-  margin-bottom: 30px;
-  font-size: 16px;
-  padding: 15px;
-  background-color: #1a1a1a;
-  border-left: 4px solid #4a90e2;
-  border-radius: 3px;
-}
-
-.deck-info h3 {
-  margin-bottom: 10px;
-  color: #4a90e2;
-  font-size: 16px;
 }
 
 .deck-info div {
@@ -131,52 +76,12 @@ body {
   box-shadow: 0 4px 10px rgba(74, 144, 226, 0.8);
 }
 
-/* Stacked Forests (overlapped, showing top 10%) */
+/* Forest cards are positioned by JS; ensure absolute positioning */
 .forests-section .card {
   position: absolute;
-  margin-left: -81px; /* Overlap 90% */
 }
 
-.forests-section .card:first-child {
-  margin-left: 0;
-}
-
-.forests-section .card:nth-child(2) {
-  left: 114px;
-  z-index: 2;
-}
-
-.forests-section .card:nth-child(3) {
-  left: 228px;
-  z-index: 3;
-}
-
-.forests-section .card:nth-child(4) {
-  left: 342px;
-  z-index: 4;
-}
-
-.forests-section .card:nth-child(5) {
-  left: 456px;
-  z-index: 5;
-}
-
-.forests-section .card:nth-child(6) {
-  left: 570px;
-  z-index: 6;
-}
-
-.forests-section .card:nth-child(6) {
-  left: 230px;
-  z-index: 6;
-}
-
-.forests-section .card:nth-child(n+7) {
-    /* TODO: Never hide cards! We must adapt and scale cards down instead if needed! */
-  display: none; /* Hide if more than 6 visible forests */
-}
-
-/* Hand section at the bottom */
+/* Hand container and layout - JS will compute exact placement for fan */
 .hand-container {
   margin-top: auto;
   border-top: 1px solid #444;
@@ -189,60 +94,25 @@ body {
   color: #aaa;
 }
 
-/* Hand cards fanned at bottom */
+/* Hand area: we position cards absolutely and compute fan in JS */
 #hand {
-  display: flex;
-  gap: -45px;
-  justify-content: center;
-  align-items: flex-end;
-  perspective: 1000px;
   position: relative;
-  height: 250px;
-  margin: 0 -30px;
+  height: 260px;
+  width: 100%;
+  overflow: visible;
 }
 
 #hand .card {
-  transition: transform 0.2s, margin 0.2s;
+  position: absolute;
+  left: 50%;
+  top: 50%;
   transform-origin: bottom center;
-  margin: 0 -45px;
+  transition: transform 0.25s, left 0.25s, top 0.25s;
+  will-change: transform, left, top;
 }
 
-/* Fan effect: tilt each card - cleaner spread */
-#hand .card:nth-child(1) {
-  transform: rotate(-12deg) translateY(40px) translateX(-30px);
-}
-
-#hand .card:nth-child(2) {
-  transform: rotate(-8deg) translateY(20px) translateX(-20px);
-}
-
-#hand .card:nth-child(3) {
-  transform: rotate(-4deg) translateY(5px) translateX(-10px);
-}
-
-#hand .card:nth-child(4) {
-  transform: rotate(0deg);
-}
-
-#hand .card:nth-child(5) {
-  transform: rotate(4deg) translateY(5px) translateX(10px);
-}
-
-#hand .card:nth-child(6) {
-  transform: rotate(8deg) translateY(20px) translateX(20px);
-}
-
-#hand .card:nth-child(7) {
-  transform: rotate(12deg) translateY(40px) translateX(30px);
-}
-
-#hand .card:nth-child(n+8) {
-    /* TODO: This must be scalable! Never want to hide cards! */
-  display: none; /* Hide if more than 7 cards visible at once */
-}
-
-/* Hover effect for hand cards */
+/* Hover effect for hand cards kept */
 #hand .card:hover {
-  transform: translateY(0px) scale(1.3) !important;
-  z-index: 10;
+  transform: translate(-50%, 0) rotate(0deg) translateY(-30px) scale(1.35) !important;
+  z-index: 9999 !important;
 }

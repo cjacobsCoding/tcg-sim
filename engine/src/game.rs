@@ -10,6 +10,7 @@ use crate::ELoggingVerbosity;
 pub enum GameStep 
 {
     StartTurn,
+    Untap,
     Upkeep,
     Draw,
     Main,
@@ -115,6 +116,23 @@ impl GameState
             GameStep::StartTurn =>
             {
                 self.turns += 1;
+                self.step = GameStep::Untap;
+            }
+
+            GameStep::Untap =>
+            {
+                // Untap all tappable cards
+                {
+                    let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                    for card in battlefield.iter_mut()
+                    {
+                        if crate::tappable::is_tapped(card)
+                        {
+                            crate::tappable::set_tapped(card, false);
+                        }
+                    }
+                }
+
                 self.step = GameStep::Upkeep;
             }
 
@@ -174,99 +192,48 @@ impl GameState
                     }
                 }
 
-                // Cast as many creatures as we are able!
+                // Cast at most one creature this main phase (game rule enforced)
                 {
-                    let mut available_mana;
+
+                    // Count available untapped lands as available mana
+                    let mut available_mana = self.zones.get(&Zone::Battlefield).unwrap().iter().filter(|c| {
+                        c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)
+                    }).count() as u32;
+
+                    // Find first castable creature in hand
+                    let cast_pos = {
+                        let hand = self.zones.get(&Zone::Hand).unwrap();
+                        hand.iter().position(|c| crate::creature::is_creature(c) && c.cost <= available_mana)
+                    };
+
+                    if let Some(pos) = cast_pos
                     {
-                        available_mana = self.zones.get(&Zone::Battlefield).unwrap().iter().filter(|c| c.is_type(crate::card::CardType::Land)).count() as u32;
-                    }
+                        // Remove card first
+                        let mut card = {
+                            let hand = self.zones.get_mut(&Zone::Hand).unwrap();
+                            hand.remove(pos)
+                        };
 
-                    let mut i = 0;
-                    loop
-                    {
-                        let castable;
+                        vlog!(ELoggingVerbosity::Verbose, "Cast {}", card.name);
+
+                        // Newly cast creatures have summoning sickness
+                        crate::creature::set_summoning_sickness(&mut card, true);
+
+                        // Tap lands to pay for the creature's cost
+                        let mut need = card.cost;
                         {
-                            let hand = self.zones.get(&Zone::Hand).unwrap();
-                            castable = crate::creature::is_creature(&hand[i]) && hand[i].cost <= available_mana;
-                        }
-
-                        if castable
-                        {
-                            // Remove card first
-                            let mut card = 
-                            {
-                                let hand = self.zones.get_mut(&Zone::Hand).unwrap();
-                                hand.remove(i)
-                            };
-
-                            vlog!(ELoggingVerbosity::Verbose, "Cast {}", card.name);
-
-                            // Newly cast creatures have summoning sickness
-                            crate::creature::set_summoning_sickness(&mut card, true);
-
-                            available_mana -= card.cost;
-
-                            // Put the card onto the battlefield
                             let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
-                            battlefield.push(card);
-                        }
-                        else
-                        {
-                            i += 1;
+                            for b in battlefield.iter_mut().filter(|c| c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)) {
+                                if need == 0 { break; }
+                                crate::tappable::set_tapped(b, true);
+                                need -= 1;
+                            }
                         }
 
-                        let hand_len = self.zones.get(&Zone::Hand).unwrap().len();
-                        if i >= hand_len
-                        {
-                            break;
-                        }
+                        // Put the card onto the battlefield
+                        let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                        battlefield.push(card);
                     }
-
-                    /*let mut cast_one = false;
-                    let mut i = 0;
-                    loop
-                    {
-                        if cast_one
-                        {
-                            break;  // Only cast one creature per main phase
-                        }
-                        
-                        let hand_len = self.zones.get(&Zone::Hand).unwrap().len();
-                        if i >= hand_len
-                        {
-                            break;
-                        }
-
-                        let castable;
-                        {
-                            let available_mana = self.zones.get(&Zone::Battlefield).unwrap().iter().filter(|c| c.is_type(crate::card::CardType::Land)).count() as u32;
-                            let hand = self.zones.get(&Zone::Hand).unwrap();
-                            castable = crate::creature::is_creature(&hand[i]) && hand[i].cost <= available_mana;
-                        }
-
-                        if castable
-                        {
-                            // Remove card first
-                            let mut card = 
-                            {
-                                let hand = self.zones.get_mut(&Zone::Hand).unwrap();
-                                hand.remove(i)
-                            };
-
-                            vlog!(ELoggingVerbosity::Verbose, "Cast {}", card.name);
-
-                            // Newly cast creatures have summoning sickness
-                            crate::creature::set_summoning_sickness(&mut card, true);
-
-                            let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
-                            battlefield.push(card);
-                            cast_one = true;  // Stop after casting one creature
-                        }
-                        else
-                        {
-                            i += 1;
-                        }
-                    }*/
                 }
 
                 self.step = GameStep::Combat;
@@ -595,18 +562,20 @@ mod tests
 
         let mut gs = GameState { zones, life: 20, turns: 0, step: GameStep::StartTurn };
 
-        // Turn 1: StartTurn -> Upkeep -> Draw -> Main -> Combat
-        gs.step(); // StartTurn -> Upkeep
+        // Turn 1: StartTurn -> Untap -> Upkeep -> Draw -> Main -> Combat
+        gs.step(); // StartTurn -> Untap
+        gs.step(); // Untap -> Upkeep
         gs.step(); // Upkeep -> Draw (draws a forest)
         gs.step(); // Draw -> Main
         gs.step(); // Main -> Combat (plays 1 land, casts grizzly with 2 mana total, gives it summoning sickness)
         gs.step(); // Combat should NOT deal damage because creature is sick
         assert_eq!(gs.life, 20, "Creature with summoning sickness should not deal damage on the turn it was cast");
 
-        // Continue to EndTurn -> StartTurn -> Upkeep (for turn 2)
+        // Continue to EndTurn -> StartTurn -> Untap -> Upkeep (for turn 2)
         gs.step(); // Combat -> EndTurn
         gs.step(); // EndTurn -> StartTurn
-        gs.step(); // StartTurn -> Upkeep (clears sickness)
+        gs.step(); // StartTurn -> Untap
+        gs.step(); // Untap -> Upkeep (clears sickness)
 
         // Advance to Combat of second turn
         gs.step(); // Upkeep -> Draw (draws another forest)
@@ -614,5 +583,54 @@ mod tests
         gs.step(); // Main -> Combat
         gs.step(); // Combat should now deal damage
         assert!(gs.life < 20, "Creature should deal damage after sickness cleared on upkeep");
+    }
+
+    #[test]
+    fn casting_taps_forests_used_for_payment()
+    {
+        // Battlefield: 2x Forest (untapped). Hand: Grizzly Bears (cost 2). Main phase.
+        let mut hand = Vec::new();
+        hand.push(grizzly_bears());
+
+        let mut battlefield = Vec::new();
+        battlefield.push(forest());
+        battlefield.push(forest());
+
+        let mut zones = std::collections::HashMap::new();
+        zones.insert(Zone::Library, Vec::new());
+        zones.insert(Zone::Hand, hand);
+        zones.insert(Zone::Battlefield, battlefield);
+        zones.insert(Zone::Graveyard, Vec::new());
+
+        let mut gs = GameState { zones, life: 20, turns: 0, step: GameStep::Main };
+        gs.step();
+
+        // After casting, a grizzly should be on the battlefield and two forests should be tapped
+        let bf = gs.zones.get(&Zone::Battlefield).unwrap();
+        assert_eq!(bf.iter().filter(|c| c.is_type(crate::card::CardType::Land)).count(), 2);
+        assert_eq!(bf.iter().filter(|c| c.is_type(crate::card::CardType::Creature)).count(), 1);
+        let tapped_lands = bf.iter().filter(|c| c.is_type(crate::card::CardType::Land) && crate::tappable::is_tapped(c)).count();
+        assert_eq!(tapped_lands, 2, "Both forests used to pay should be tapped");
+    }
+
+    #[test]
+    fn untap_phase_clears_tapped_state()
+    {
+        let mut battlefield = Vec::new();
+        let mut f = forest();
+        crate::tappable::set_tapped(&mut f, true);
+        battlefield.push(f);
+
+        let mut zones = std::collections::HashMap::new();
+        zones.insert(Zone::Battlefield, battlefield);
+        zones.insert(Zone::Hand, Vec::new());
+        zones.insert(Zone::Library, Vec::new());
+        zones.insert(Zone::Graveyard, Vec::new());
+
+        let mut gs = GameState { zones, life: 20, turns: 0, step: GameStep::Untap };
+        gs.step();
+
+        let bf = gs.zones.get(&Zone::Battlefield).unwrap();
+        assert!(!crate::tappable::is_tapped(&bf[0]));
     }
 }

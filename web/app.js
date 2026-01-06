@@ -136,15 +136,65 @@ function updateDisplay(state)
     lifeElement.textContent = state.life;
     turnsElement.textContent = state.turns;
 
-    // Render hand
+    // Render hand with dynamic fan layout (no hidden cards)
     const hand = document.getElementById("hand");
     hand.innerHTML = "";
     const handCards = state.zones.Hand || [];
-    handCards.forEach(card => {
+    const CARD_W = 90;
+    const CARD_H = 120;
+    const MAX_PER_CARD_ANGLE = 18; // degrees per card before capping
+    const MAX_SPAN = 90; // maximum total fan span in degrees
+    const n = handCards.length;
+    const span = n > 1 ? Math.min(MAX_SPAN, (n - 1) * MAX_PER_CARD_ANGLE) : 0;
+    const step = n > 1 ? span / (n - 1) : 0;
+    const centerIndex = (n - 1) / 2;
+
+    // compute shift per card but cap so cards never spread beyond container
+    const containerW = hand.clientWidth || window.innerWidth;
+    const baseShift = CARD_W * 0.45; // preferred separation
+    const MIN_OVERLAP = 0.10; // require at least 10% overlap
+    const maxShiftOverlap = CARD_W * (1 - MIN_OVERLAP); // max allowed shift to maintain min overlap
+    const maxShiftContainer = n > 1 ? Math.max((containerW * 0.9 - CARD_W) / (n - 1), 10) : baseShift;
+    const shift = Math.min(baseShift, maxShiftOverlap, maxShiftContainer);
+
+    // debug: expose computed values to console for troubleshooting
+    console.debug('hand fan', { n, containerW, baseShift, maxShiftOverlap, maxShiftContainer, shift, span, step });
+
+    // tapped state -> rotate additional 90deg to the right
+    function cardIsTapped(card) {
+        if (!card || !card.fragments) return false;
+        const f = card.fragments.Tappable;
+        if (!f) return false;
+        if (typeof f.tapped === 'boolean') return f.tapped;
+        if (f.Tappable && typeof f.Tappable.tapped === 'boolean') return f.Tappable.tapped;
+        return false;
+    }
+
+    handCards.forEach((card, i) => {
         const img = document.createElement("img");
         img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
         img.className = "card";
         img.alt = card.name;
+        img.style.width = `${CARD_W}px`;
+        img.style.height = `${CARD_H}px`;
+
+        // compute angle and position
+        const angle = n > 1 ? -span / 2 + i * step : 0; // degrees
+        const x = (i - centerIndex) * shift; // horizontal offset (capped)
+        const maxYOffset = 40; // px
+        const y = span > 0 ? (Math.abs(angle) / (span / 2 || 1)) * maxYOffset : 0;
+
+        // tapped state -> rotate additional 90deg to the right
+        const isTapped = card.fragments && card.fragments.Tappable && card.fragments.Tappable.tapped === true;
+        const finalAngle = angle + (isTapped ? 90 : 0);
+
+        // transform: center the card then offset and rotate
+        img.style.transform = `translate(-50%, -40%) translateX(${x}px) rotate(${finalAngle}deg) translateY(${y}px)`;
+        img.style.zIndex = `${(i * 10)}`;
+
+        // debug: store shift/angle for inspection in devtools
+        img.dataset.fan = JSON.stringify({ i, angle, x, y, shift });
+
         hand.appendChild(img);
     });
 
@@ -166,17 +216,56 @@ function updateDisplay(state)
         img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
         img.className = "card";
         img.alt = card.name;
+        
+        const isTapped = cardIsTapped(card);
+        if (isTapped) {
+            img.style.transform = `rotate(90deg)`;
+        }
+        else{
+            img.style.transform = `rotate(0deg)`;
+        }
+
         grizzliesContainer.appendChild(img);
     });
 
-    // Render stacked Forests
-    forests.forEach(card => {
+    // Render forests with slight horizontal offsets so all are visible (no hiding)
+    forests.forEach((card, i) => {
         const img = document.createElement("img");
         img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
         img.className = "card";
         img.alt = card.name;
+        img.style.width = `90px`;
+        img.style.height = `120px`;
+        img.style.position = 'absolute';
+
+        const containerW = forestsContainer.clientWidth || 600;
+        const CARD_W = 90;
+        const overlap = CARD_W * 0.18; // how much to slide each subsequent forest
+        const totalWidth = (forests.length - 1) * overlap + CARD_W;
+        const startX = (containerW - totalWidth) / 2;
+        const left = startX + i * overlap;
+        img.style.left = `${left}px`;
+        img.style.top = `10px`;
+        img.style.zIndex = `${i}`;
+
+        const isTapped = cardIsTapped(card);
+        if (isTapped) {
+            img.style.transform = `rotate(90deg)`;
+        }
+        else{
+            img.style.transform = `rotate(0deg)`;
+        }
+
         forestsContainer.appendChild(img);
     });
+
+    // If the game reached GameOver, auto-restart to next game after short delay
+    if (state.step === "GameOver") {
+        setTimeout(() => {
+            // Restart engine to next game
+            restart();
+        }, 300);
+    }
 }
 
 async function render()

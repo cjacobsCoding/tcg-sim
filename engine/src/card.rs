@@ -21,6 +21,7 @@ pub struct CreatureStats
 pub enum CardFragmentKind
 {
     Creature,
+    Tappable,
 }
 
 pub trait Fragment: Any + Send + Sync
@@ -55,6 +56,24 @@ impl Fragment for CreatureFragment
     }
 }
 
+impl Fragment for TappableFragment
+{
+    fn as_any(&self) -> &dyn Any
+    {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any
+    {
+        self
+    }
+
+    fn box_clone(&self) -> Box<dyn Fragment>
+    {
+        Box::new(TappableFragment { tapped: self.tapped })
+    }
+}
+
 impl Clone for Box<dyn Fragment>
 {
     fn clone(&self) -> Box<dyn Fragment>
@@ -68,6 +87,7 @@ impl Clone for Box<dyn Fragment>
 pub enum SerializableFragment
 {
     Creature(CreatureFragment),
+    Tappable(TappableFragment),
 }
 
 impl SerializableFragment
@@ -78,6 +98,7 @@ impl SerializableFragment
         match self
         {
             SerializableFragment::Creature(cf) => Box::new(cf.clone()),
+            SerializableFragment::Tappable(tf) => Box::new(tf.clone()),
         }
     }
 
@@ -88,8 +109,18 @@ impl SerializableFragment
         {
             return Some(SerializableFragment::Creature(cf.clone()));
         }
+        if let Some(tf) = fragment.as_any().downcast_ref::<TappableFragment>()
+        {
+            return Some(SerializableFragment::Tappable(tf.clone()));
+        }
         None
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TappableFragment
+{
+    pub tapped: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -205,7 +236,14 @@ pub fn forest() -> Card
         name: String::from("Forest"),
         card_types: vec![CardType::Land],
         cost: 0,
-        fragments: HashMap::new(),
+        fragments: {
+            let mut m = HashMap::new();
+            m.insert(
+                CardFragmentKind::Tappable,
+                Box::new(TappableFragment { tapped: false }) as Box<dyn Fragment>,
+            );
+            m
+        },
     }
 }
 
@@ -221,6 +259,10 @@ pub fn grizzly_bears() -> Card
             m.insert(
                 CardFragmentKind::Creature,
                 Box::new(CreatureFragment { stats: CreatureStats { power: 2, toughness: 2 }, summoning_sickness: false }) as Box<dyn Fragment>,
+            );
+            m.insert(
+                CardFragmentKind::Tappable,
+                Box::new(TappableFragment { tapped: false }) as Box<dyn Fragment>,
             );
             m
         },
