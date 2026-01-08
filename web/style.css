@@ -102,6 +102,11 @@ body
   margin-top: auto;
   border-top: 1px solid #444;
   padding-top: 20px;
+  display: flex;
+  align-items: center; /* vertically center */
+  justify-content: center; /* center the whole content horizontally */
+  position: relative;
+  height: 260px; /* fixed height to match your hand height */
 }
 
 .hand-container h3 
@@ -114,10 +119,14 @@ body
 /* Hand area: we position cards absolutely and compute fan in JS */
 #hand 
 {
-  position: relative;
-  height: 260px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   width: 100%;
+  height: 100%;
   overflow: visible;
+  pointer-events: none; /* cards themselves handle hover */
 }
 
 #hand .card 
@@ -131,6 +140,13 @@ body
   will-change: transform, left, top;
 }
 
-#hand .card:hover {
-  /* handled by JS */
+#library 
+{
+  position: absolute;
+  left: 20px; /* offset from left edge of container */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 100px; /* or whatever fits your stacked cards */
+  height: 120px;
+  pointer-events: none; /* cards themselves handle hover */
 }

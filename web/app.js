@@ -165,8 +165,34 @@ function updateDisplay(state)
     const handCards = state.zones.Hand || [];
 
     const library = document.getElementById("library");
-    library.innerHTML = "";
+    // Render library cards
     const libraryCards = state.zones.Library || [];
+    library.innerHTML = "";
+
+    const LIB_CARD_W = 90;
+    const LIB_CARD_H = 120;
+    const overlapW = LIB_CARD_W * 0.003; // horizontal overlap
+    const overlapH = LIB_CARD_H * 0.003; // vertical overlap
+
+    libraryCards.forEach((card, i) => 
+    {
+        const img = document.createElement("img");
+        img.src = `/cards/back.jpg`;
+        img.className = "card back";
+        img.alt = "card back";
+        img.style.width = `${LIB_CARD_W}px`;
+        img.style.height = `${LIB_CARD_H}px`;
+        img.style.position = "absolute";
+        
+        // Stack from top to bottom inside library div
+        const left = i * overlapW;
+        const top = i * -overlapH;
+        img.style.top = `${top}px`;
+        img.style.left = `${left}px`; // library container already positioned
+        img.style.zIndex = `${i}`;
+        
+        library.appendChild(img);
+    });
 
     const CARD_W = 90;
     const CARD_H = 120;
@@ -207,72 +233,36 @@ function updateDisplay(state)
         return false;
     }
 
-    handCards.forEach((card, i) => {
+    handCards.forEach((card, i) => 
+    {
         const img = document.createElement("img");
         img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
         img.className = "card";
         img.alt = card.name;
         img.style.width = `${CARD_W}px`;
         img.style.height = `${CARD_H}px`;
+        img.style.position = 'absolute';
 
-        // compute angle and position
-        const angle = n > 1 ? -span / 2 + i * step : 0; // degrees
-        const x = (i - centerIndex) * shift; // horizontal offset (capped)
-        const maxYOffset = 40; // px
-        const y = span > 0 ? (Math.abs(angle) / (span / 2 || 1)) * maxYOffset : 0;
+        // fanning calculation
+        const angle = n > 1 ? -span / 2 + i * step : 0;
+        const x = (i - centerIndex) * shift;
+        const y = span > 0 ? (Math.abs(angle) / (span / 2 || 1)) * 40 : 0;
+        const finalAngle = angle + (cardIsTapped(card) ? 90 : 0);
 
-        // tapped state -> rotate additional 90deg to the right
-        const isTapped = card.fragments && card.fragments.Tappable && card.fragments.Tappable.tapped === true;
-        const finalAngle = angle + (isTapped ? 90 : 0);
-
-        // transform: center the card then offset and rotate
-        const baseTransform = `translate(-50%, -40%) translateX(${x}px) rotate(${finalAngle}deg) translateY(${y}px)`;
-
-        img.style.transform = baseTransform;
-        img.dataset.baseTransform = baseTransform;
+        img.style.transform = `translate(-50%, -50%) translateX(${x}px) rotate(${finalAngle}deg) translateY(${y}px)`;
+        img.dataset.baseTransform = img.style.transform;
 
         img.addEventListener("mouseenter", () => {
             img.style.zIndex = "9999";
-            img.style.transform =
-                `${img.dataset.baseTransform} scale(1.35) translateY(-30px)`;
+            img.style.transform = `${img.dataset.baseTransform} scale(1.35) translateY(-30px)`;
         });
-
         img.addEventListener("mouseleave", () => {
             img.style.zIndex = `${i * 10}`;
             img.style.transform = img.dataset.baseTransform;
         });
-
-        img.style.zIndex = `${(i * 10)}`;
-
-        // debug: store shift/angle for inspection in devtools
-        img.dataset.fan = JSON.stringify({ i, angle, x, y, shift });
+        img.style.zIndex = `${i * 10}`;
 
         hand.appendChild(img);
-    });
-
-    libraryCards.forEach((card, i) => 
-    {
-        const img = document.createElement("img");
-        img.src = `/cards/back.jpg`;
-        img.className = "card back";
-        img.alt = "card back";
-        img.style.width = `${CARD_W}px`;
-        img.style.height = `${CARD_H}px`;
-        img.style.position = 'absolute';
-
-        const containerH = library.clientHeight || 600;
-        const overlapW = CARD_W * 0.005;
-        const overlapH = CARD_H * 0.005;
-        const totalHeight = CARD_H - ((libraryCards.length - 1) * overlapH);
-        const startX = 50;
-        const starty = ((containerH - totalHeight) / 2) + (library.clientTop || 300);
-        const left = startX + i * overlapW;
-        const top = starty + (libraryCards.length - i) * overlapH;
-        img.style.left = `${left}px`;
-        img.style.top = `${top}px`;
-        img.style.zIndex = `${i}`;
-
-        library.appendChild(img);
     });
 
     // Render battlefield: separate Grizzly Bears and Forests
