@@ -192,24 +192,25 @@ impl GameState
                     }
                 }
 
-                // Cast at most one creature this main phase (game rule enforced)
+                // Cast as many creatures as possible until there is no more mana
+                loop
                 {
-
                     // Count available untapped lands as available mana
-                    let mut available_mana = self.zones.get(&Zone::Battlefield).unwrap().iter().filter(|c| {
-                        c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)
-                    }).count() as u32;
+                    let available_mana = self.zones.get(&Zone::Battlefield).unwrap().iter().filter(|card| 
+                        card.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(card)).count() as u32;
 
                     // Find first castable creature in hand
-                    let cast_pos = {
+                    let cast_pos = 
+                    {
                         let hand = self.zones.get(&Zone::Hand).unwrap();
-                        hand.iter().position(|c| crate::creature::is_creature(c) && c.cost <= available_mana)
+                        hand.iter().position(|card| crate::creature::is_creature(card) && card.cost <= available_mana)
                     };
 
                     if let Some(pos) = cast_pos
                     {
                         // Remove card first
-                        let mut card = {
+                        let mut card = 
+                        {
                             let hand = self.zones.get_mut(&Zone::Hand).unwrap();
                             hand.remove(pos)
                         };
@@ -223,8 +224,12 @@ impl GameState
                         let mut need = card.cost;
                         {
                             let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
-                            for b in battlefield.iter_mut().filter(|c| c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)) {
-                                if need == 0 { break; }
+                            for b in battlefield.iter_mut().filter(|c| c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)) 
+                            {
+                                if need == 0 
+                                { 
+                                    break; 
+                                }
                                 crate::tappable::set_tapped(b, true);
                                 need -= 1;
                             }
@@ -234,6 +239,11 @@ impl GameState
                         let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
                         battlefield.push(card);
                     }
+                    else
+                    {
+                        // Nothing more can be cast
+                        break;
+                    }
                 }
 
                 self.step = GameStep::Combat;
@@ -241,14 +251,12 @@ impl GameState
 
             GameStep::Combat =>
             {
-                let battlefield = self.zones.get(&Zone::Battlefield).unwrap();
+                let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
                 let mut damage = 0;
-                for card in battlefield.iter()
+                for card in battlefield.iter_mut().filter(|card| card.is_type(crate::card::CardType::Creature) && !crate::creature::has_summoning_sickness(card) && !crate::tappable::is_tapped(card))
                 {
-                    if !crate::creature::has_summoning_sickness(card)
-                    {
-                        damage += crate::creature::creature_stats(card).map(|s| s.power as u32).unwrap_or(0);
-                    }
+                    damage += crate::creature::creature_stats(card).map(|stat| stat.power as u32).unwrap_or(0);
+                    crate::tappable::set_tapped(card, true);
                 }
 
                 self.life -= damage as i32;
@@ -515,7 +523,8 @@ mod tests
         hand.push(grizzly_bears());
 
         let mut battlefield = Vec::new();
-        for _ in 0..4 {
+        for _ in 0..4 
+        {
             battlefield.push(forest());
         }
 

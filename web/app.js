@@ -161,7 +161,8 @@ function updateDisplay(state)
     console.debug('hand fan', { n, containerW, baseShift, maxShiftOverlap, maxShiftContainer, shift, span, step });
 
     // tapped state -> rotate additional 90deg to the right
-    function cardIsTapped(card) {
+    function cardIsTapped(card) 
+    {
         if (!card || !card.fragments) return false;
         const f = card.fragments.Tappable;
         if (!f) return false;
