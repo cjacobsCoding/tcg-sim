@@ -122,7 +122,7 @@ pub fn try_scenario(lands: u32, nonlands: u32, program_state: &mut ProgramState)
     }
 
     let deck = Deck { cards };
-    let games = 10000;
+    let games = 3000;
     let mut total_turns = 0;
 
     for _ in 0..games
