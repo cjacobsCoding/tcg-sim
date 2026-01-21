@@ -33,46 +33,100 @@ body
   color: #aaa;
 }
 
+.game-info
+{
+  margin-bottom: 20px;
+}
+
+.info-item
+{
+  margin-bottom: 5px;
+}
+
+.info-item label
+{
+  font-weight: bold;
+  color: #aaa;
+}
+
 .deck-info div 
 {
   color: #ccc;
   margin: 5px 0;
 }
 
-/* Battlefield section at the top */
-.battlefield-container 
+/* Container for all players' zones */
+.players-container
 {
-  order: -1;
-  margin-bottom: 40px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px; /* spacing between creatures and lands */
-  height: 300px; /* total battlefield height */
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 30px;
+  margin-bottom: 30px;
 }
 
-.battlefield-container h3 
+/* Individual player section */
+.player-section
 {
-  font-size: 18px;
+  border: 2px solid #444;
+  border-radius: 8px;
+  padding: 20px;
+  background-color: #1a1a1a;
+}
+
+.player-section h2
+{
+  font-size: 20px;
   margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #555;
+}
+
+.player-section-current
+{
+  background-color: #1a2a1a;
+  border-color: #4a8a4a;
+}
+
+.player-section-current h2
+{
+  color: #7cfc7c;
+}
+
+.player-section-other h2
+{
   color: #aaa;
 }
 
-/* Grizzly Bears positioned above Forests */
+/* Battlefield section */
+.player-battlefield
+{
+  margin-bottom: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.player-battlefield h3
+{
+  font-size: 16px;
+  color: #bbb;
+  margin: 0;
+}
+
 .grizzlies-section 
 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-start;
-  justify-content: center; /* center creatures horizontally */
-  height: 160px; /* reserve space for creatures */
+  justify-content: flex-start;
+  min-height: 130px;
 }
 
 .forests-section 
 {
   position: relative;
-  min-height: 140px; /* reserve space for lands */
-  height: 140px; /* fixed height */
+  min-height: 140px;
 }
 
 /* Card styling - small and uniform */
@@ -82,7 +136,7 @@ body
   height: 120px;
   object-fit: contain;
   object-position: center;
-  background-color: #1a1a1a;
+  background-color: #2a2a2a;
   border: 1px solid #333;
   border-radius: 3px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
@@ -96,51 +150,76 @@ body
   box-shadow: 0 4px 10px rgba(74, 144, 226, 0.8);
 }
 
-.battlefield-container .card:hover 
+.grizzlies-section .card:hover,
+.forests-section .card:hover
 {
   transform: scale(1.05);
 }
 
-/* Forest cards are positioned by JS; ensure absolute positioning */
+/* Forest cards are positioned absolutely */
 .forests-section .card 
 {
   position: absolute;
 }
 
-/* Hand container and layout - JS will compute exact placement for fan */
-.hand-container 
+/* Hand & Library section */
+.player-hand-library
 {
-  margin-top: auto;
-  border-top: 1px solid #444;
-  padding-top: 20px;
   display: flex;
-  align-items: center; /* vertically center */
-  justify-content: center; /* center the whole content horizontally */
-  position: relative;
-  height: 260px; /* fixed height to match your hand height */
+  flex-direction: column;
+  gap: 15px;
 }
 
-.hand-container h3 
+.player-hand-library h3
 {
-  font-size: 18px;
-  margin-bottom: 15px;
-  color: #aaa;
+  font-size: 16px;
+  color: #bbb;
+  margin: 0;
 }
 
-/* Hand area: we position cards absolutely and compute fan in JS */
-#hand 
+.hand-library-content
+{
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+/* Library section */
+.library-section
+{
+  position: relative;
+  width: 120px;
+  min-height: 160px;
+  flex-shrink: 0;
+}
+
+.library-section .card
 {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none; /* cards themselves handle hover */
 }
 
-#hand .card 
+.library-section .zone-label
+{
+  position: absolute;
+  bottom: -25px;
+  left: 0;
+  font-size: 12px;
+  color: #aaa;
+  margin: 0;
+}
+
+/* Hand section */
+.hand-section
+{
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hand-section .card
 {
   position: absolute;
   left: 50%;
@@ -151,13 +230,21 @@ body
   will-change: transform, left, top;
 }
 
-#library 
+.hand-section .zone-label
 {
   position: absolute;
-  left: 20px; /* offset from left edge of container */
-  top: 50%;
-  transform: translateY(-50%);
-  width: 100px; /* or whatever fits your stacked cards */
-  height: 120px;
-  pointer-events: none; /* cards themselves handle hover */
+  bottom: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: #aaa;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.zone-label
+{
+  font-size: 12px;
+  color: #888;
+  margin-top: 5px;
 }

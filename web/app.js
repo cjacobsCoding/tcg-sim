@@ -143,6 +143,205 @@ function updateDeckInfo()
     }
 }
 
+// Helper function to check if a card is tapped
+function cardIsTapped(card) 
+{
+    if (!card || !card.fragments) 
+    {
+        return false;
+    }
+
+    const f = card.fragments.Tappable;
+    if (!f) 
+    {
+        return false;
+    }
+
+    if (typeof f.tapped === 'boolean') return f.tapped;
+    if (f.Tappable && typeof f.Tappable.tapped === 'boolean') return f.Tappable.tapped;
+    return false;
+}
+
+// Render a single player's zones
+function renderPlayerZones(player, playerIndex, isCurrentPlayer)
+{
+    const container = document.createElement("div");
+    container.className = `player-section ${isCurrentPlayer ? 'current-player' : ''}`;
+    
+    const title = document.createElement("h2");
+    title.textContent = `Player ${playerIndex}${isCurrentPlayer ? ' (Current)' : ''} - ${player.life} HP`;
+    container.className += isCurrentPlayer ? ' player-section-current' : ' player-section-other';
+    container.appendChild(title);
+
+    // Battlefield
+    const battlefieldDiv = document.createElement("div");
+    battlefieldDiv.className = "player-battlefield";
+    
+    const battlefieldTitle = document.createElement("h3");
+    battlefieldTitle.textContent = "Battlefield";
+    battlefieldDiv.appendChild(battlefieldTitle);
+    
+    const bfCards = player.zones.Battlefield || [];
+    const grizzlies = bfCards.filter(c => c.name === "Grizzly Bears");
+    const forests = bfCards.filter(c => c.name === "Forest");
+
+    const grizzliesContainer = document.createElement("div");
+    grizzliesContainer.className = "grizzlies-section";
+    grizzlies.forEach(card => 
+    {
+        const img = document.createElement("img");
+        img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
+        img.className = "card";
+        img.alt = card.name;
+        
+        if (cardIsTapped(card)) 
+        {
+            img.style.transform = `rotate(90deg)`;
+        }
+
+        grizzliesContainer.appendChild(img);
+    });
+    battlefieldDiv.appendChild(grizzliesContainer);
+
+    const forestsContainer = document.createElement("div");
+    forestsContainer.className = "forests-section";
+    forests.forEach((card, i) => 
+    {
+        const img = document.createElement("img");
+        img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
+        img.className = "card";
+        img.alt = card.name;
+
+        const CARD_W = 90;
+        const containerW = 800; // Estimate for forests section
+        const overlap = CARD_W * 0.18;
+        const totalWidth = (forests.length - 1) * overlap + CARD_W;
+        const startX = (containerW - totalWidth) / 2;
+        const left = startX + i * overlap;
+        img.style.left = `${left}px`;
+        img.style.top = `10px`;
+        img.style.zIndex = `${i}`;
+
+        if (cardIsTapped(card)) 
+        {
+            img.style.transform = `rotate(90deg)`;
+        }
+
+        forestsContainer.appendChild(img);
+    });
+    battlefieldDiv.appendChild(forestsContainer);
+    
+    container.appendChild(battlefieldDiv);
+
+    // Hand & Library
+    const handLibraryDiv = document.createElement("div");
+    handLibraryDiv.className = "player-hand-library";
+
+    const handLibTitle = document.createElement("h3");
+    handLibTitle.textContent = "Hand & Library";
+    handLibraryDiv.appendChild(handLibTitle);
+
+    const handLibContent = document.createElement("div");
+    handLibContent.className = "hand-library-content";
+
+    // Library
+    const libraryDiv = document.createElement("div");
+    libraryDiv.className = "library-section";
+    const libraryCards = player.zones.Library || [];
+    
+    const LIB_CARD_W = 90;
+    const LIB_CARD_H = 120;
+    const overlapW = LIB_CARD_W * 0.003;
+    const overlapH = LIB_CARD_H * 0.003;
+
+    libraryCards.forEach((card, i) => 
+    {
+        const img = document.createElement("img");
+        img.src = `/cards/back.jpg`;
+        img.className = "card back";
+        img.alt = "card back";
+        img.style.width = `${LIB_CARD_W}px`;
+        img.style.height = `${LIB_CARD_H}px`;
+        img.style.position = "absolute";
+        
+        const left = i * overlapW;
+        const top = i * -overlapH;
+        img.style.top = `${top}px`;
+        img.style.left = `${left}px`;
+        img.style.zIndex = `${i}`;
+        
+        libraryDiv.appendChild(img);
+    });
+    
+    const libLabel = document.createElement("p");
+    libLabel.className = "zone-label";
+    libLabel.textContent = `Library (${libraryCards.length})`;
+    libraryDiv.appendChild(libLabel);
+    handLibContent.appendChild(libraryDiv);
+
+    // Hand
+    const handDiv = document.createElement("div");
+    handDiv.className = "hand-section";
+    const handCards = player.zones.Hand || [];
+
+    const CARD_W = 90;
+    const CARD_H = 120;
+    const MAX_PER_CARD_ANGLE = 18;
+    const MAX_SPAN = 90;
+    const n = handCards.length;
+    const span = n > 1 ? Math.min(MAX_SPAN, (n - 1) * MAX_PER_CARD_ANGLE) : 0;
+    const step = n > 1 ? span / (n - 1) : 0;
+    const centerIndex = (n - 1) / 2;
+
+    const containerW = 600;
+    const baseShift = CARD_W * 0.45;
+    const MIN_OVERLAP = 0.10;
+    const maxShiftOverlap = CARD_W * (1 - MIN_OVERLAP);
+    const maxShiftContainer = n > 1 ? Math.max((containerW * 0.9 - CARD_W) / (n - 1), 10) : baseShift;
+    const shift = Math.min(baseShift, maxShiftOverlap, maxShiftContainer);
+
+    handCards.forEach((card, i) => 
+    {
+        const img = document.createElement("img");
+        img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
+        img.className = "card";
+        img.alt = card.name;
+        img.style.width = `${CARD_W}px`;
+        img.style.height = `${CARD_H}px`;
+
+        const angle = n > 1 ? -span / 2 + i * step : 0;
+        const x = (i - centerIndex) * shift;
+        const y = span > 0 ? (Math.abs(angle) / (span / 2 || 1)) * 40 : 0;
+        const finalAngle = angle + (cardIsTapped(card) ? 90 : 0);
+
+        img.style.transform = `translate(-50%, -50%) translateX(${x}px) rotate(${finalAngle}deg) translateY(${y}px)`;
+        img.dataset.baseTransform = img.style.transform;
+
+        img.addEventListener("mouseenter", () => {
+            img.style.zIndex = "9999";
+            img.style.transform = `${img.dataset.baseTransform} scale(1.35) translateY(-30px)`;
+        });
+        img.addEventListener("mouseleave", () => {
+            img.style.zIndex = `${i * 10}`;
+            img.style.transform = img.dataset.baseTransform;
+        });
+        img.style.zIndex = `${i * 10}`;
+
+        handDiv.appendChild(img);
+    });
+    
+    const handLabel = document.createElement("p");
+    handLabel.className = "zone-label";
+    handLabel.textContent = `Hand (${handCards.length})`;
+    handDiv.appendChild(handLabel);
+    handLibContent.appendChild(handDiv);
+
+    handLibraryDiv.appendChild(handLibContent);
+    container.appendChild(handLibraryDiv);
+
+    return container;
+}
+
 function updateDisplay(state)
 {
     if (!state) 
@@ -168,174 +367,17 @@ function updateDisplay(state)
         playersHealthElement.textContent = healthText;
     }
 
-    // Render current player's zones
-    const hand = document.getElementById("hand");
-    hand.innerHTML = "";
-    const handCards = state.players[state.current_player_index].zones.Hand || [];
-
-    const library = document.getElementById("library");
-    // Render library cards
-    const libraryCards = state.players[state.current_player_index].zones.Library || [];
-    library.innerHTML = "";
-
-    const LIB_CARD_W = 90;
-    const LIB_CARD_H = 120;
-    const overlapW = LIB_CARD_W * 0.003; // horizontal overlap
-    const overlapH = LIB_CARD_H * 0.003; // vertical overlap
-
-    libraryCards.forEach((card, i) => 
-    {
-        const img = document.createElement("img");
-        img.src = `/cards/back.jpg`;
-        img.className = "card back";
-        img.alt = "card back";
-        img.style.width = `${LIB_CARD_W}px`;
-        img.style.height = `${LIB_CARD_H}px`;
-        img.style.position = "absolute";
-        
-        // Stack from top to bottom inside library div
-        const left = i * overlapW;
-        const top = i * -overlapH;
-        img.style.top = `${top}px`;
-        img.style.left = `${left}px`; // library container already positioned
-        img.style.zIndex = `${i}`;
-        
-        library.appendChild(img);
-    });
-
-    const CARD_W = 90;
-    const CARD_H = 120;
-    const MAX_PER_CARD_ANGLE = 18; // degrees per card before capping
-    const MAX_SPAN = 90; // maximum total fan span in degrees
-    const n = handCards.length;
-    const span = n > 1 ? Math.min(MAX_SPAN, (n - 1) * MAX_PER_CARD_ANGLE) : 0;
-    const step = n > 1 ? span / (n - 1) : 0;
-    const centerIndex = (n - 1) / 2;
-
-    // compute shift per card but cap so cards never spread beyond container
-    const containerW = hand.clientWidth || window.innerWidth;
-    const baseShift = CARD_W * 0.45; // preferred separation
-    const MIN_OVERLAP = 0.10; // require at least 10% overlap
-    const maxShiftOverlap = CARD_W * (1 - MIN_OVERLAP); // max allowed shift to maintain min overlap
-    const maxShiftContainer = n > 1 ? Math.max((containerW * 0.9 - CARD_W) / (n - 1), 10) : baseShift;
-    const shift = Math.min(baseShift, maxShiftOverlap, maxShiftContainer);
-
-    // debug: expose computed values to console for troubleshooting
-    console.debug('hand fan', { n, containerW, baseShift, maxShiftOverlap, maxShiftContainer, shift, span, step });
-
-    // tapped state -> rotate additional 90deg to the right
-    function cardIsTapped(card) 
-    {
-        if (!card || !card.fragments) 
-        {
-            return false;
-        }
-
-        const f = card.fragments.Tappable;
-        if (!f) 
-        {
-            return false;
-        }
-
-        if (typeof f.tapped === 'boolean') return f.tapped;
-        if (f.Tappable && typeof f.Tappable.tapped === 'boolean') return f.Tappable.tapped;
-        return false;
+    // Render all players' zones
+    const playersContainer = document.getElementById("players-container");
+    playersContainer.innerHTML = "";
+    
+    if (state.players && state.players.length > 0) {
+        state.players.forEach((player, index) => {
+            const isCurrentPlayer = index === state.current_player_index;
+            const playerDiv = renderPlayerZones(player, index, isCurrentPlayer);
+            playersContainer.appendChild(playerDiv);
+        });
     }
-
-    handCards.forEach((card, i) => 
-    {
-        const img = document.createElement("img");
-        img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
-        img.className = "card";
-        img.alt = card.name;
-        img.style.width = `${CARD_W}px`;
-        img.style.height = `${CARD_H}px`;
-        img.style.position = 'absolute';
-
-        // fanning calculation
-        const angle = n > 1 ? -span / 2 + i * step : 0;
-        const x = (i - centerIndex) * shift;
-        const y = span > 0 ? (Math.abs(angle) / (span / 2 || 1)) * 40 : 0;
-        const finalAngle = angle + (cardIsTapped(card) ? 90 : 0);
-
-        img.style.transform = `translate(-50%, -50%) translateX(${x}px) rotate(${finalAngle}deg) translateY(${y}px)`;
-        img.dataset.baseTransform = img.style.transform;
-
-        img.addEventListener("mouseenter", () => {
-            img.style.zIndex = "9999";
-            img.style.transform = `${img.dataset.baseTransform} scale(1.35) translateY(-30px)`;
-        });
-        img.addEventListener("mouseleave", () => {
-            img.style.zIndex = `${i * 10}`;
-            img.style.transform = img.dataset.baseTransform;
-        });
-        img.style.zIndex = `${i * 10}`;
-
-        hand.appendChild(img);
-    });
-
-    // Render battlefield: separate Grizzly Bears and Forests
-    const bfCards = state.players[state.current_player_index].zones.Battlefield || [];
-    
-    const grizzlies = bfCards.filter(c => c.name === "Grizzly Bears");
-    const forests = bfCards.filter(c => c.name === "Forest");
-
-    const grizzliesContainer = document.getElementById("battlefield-grizzlies");
-    const forestsContainer = document.getElementById("battlefield-forests");
-    
-    grizzliesContainer.innerHTML = "";
-    forestsContainer.innerHTML = "";
-
-    // Render Grizzly Bears
-    grizzlies.forEach(card => 
-    {
-        const img = document.createElement("img");
-        img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
-        img.className = "card";
-        img.alt = card.name;
-        
-        const isTapped = cardIsTapped(card);
-        if (isTapped) 
-        {
-            img.style.transform = `rotate(90deg)`;
-        }
-        else
-        {
-            img.style.transform = `rotate(0deg)`;
-        }
-
-        grizzliesContainer.appendChild(img);
-    });
-
-    // Render forests with slight horizontal offsets so all are visible (no hiding)
-    forests.forEach((card, i) => 
-    {
-        const img = document.createElement("img");
-        img.src = `/cards/${encodeURIComponent(card.name)}.jpg`;
-        img.className = "card";
-        img.alt = card.name;
-
-        const containerW = forestsContainer.clientWidth || 600;
-        const overlap = CARD_W * 0.18; // how much to slide each subsequent forest
-        const totalWidth = (forests.length - 1) * overlap + CARD_W;
-        const startX = (containerW - totalWidth) / 2;
-        const left = startX + i * overlap;
-        img.style.left = `${left}px`;
-        img.style.top = `10px`;
-        img.style.zIndex = `${i}`;
-
-        const isTapped = cardIsTapped(card);
-        if (isTapped) 
-        {
-            img.style.transform = `rotate(90deg)`;
-        }
-        else
-        {
-            img.style.transform = `rotate(0deg)`;
-        }
-
-        forestsContainer.appendChild(img);
-    });
 
     // If the game reached GameOver, auto-restart to next game after short delay
     if (state.step === "GameOver") 
