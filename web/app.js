@@ -150,23 +150,32 @@ function updateDisplay(state)
         return;
     }
 
-    // Update phase, life, and turns
+    // Update phase, current player, and turns
     const phaseElement = document.getElementById("phase");
-    const lifeElement = document.getElementById("life");
+    const currentPlayerElement = document.getElementById("currentPlayer");
+    const playersHealthElement = document.getElementById("playersHealth");
     const turnsElement = document.getElementById("turns");
     
     phaseElement.textContent = formatPhase(state.step);
-    lifeElement.textContent = state.life;
+    currentPlayerElement.textContent = state.current_player_index;
     turnsElement.textContent = state.turns;
+    
+    // Display all players' health
+    if (state.players && state.players.length > 0) {
+        const healthText = state.players.map((p, i) => 
+            `Player ${i}: ${p.life} HP ${i === state.current_player_index ? '(current)' : ''}`
+        ).join(' | ');
+        playersHealthElement.textContent = healthText;
+    }
 
-    // Render hand with dynamic fan layout (no hidden cards)
+    // Render current player's zones
     const hand = document.getElementById("hand");
     hand.innerHTML = "";
-    const handCards = state.zones.Hand || [];
+    const handCards = state.players[state.current_player_index].zones.Hand || [];
 
     const library = document.getElementById("library");
     // Render library cards
-    const libraryCards = state.zones.Library || [];
+    const libraryCards = state.players[state.current_player_index].zones.Library || [];
     library.innerHTML = "";
 
     const LIB_CARD_W = 90;
@@ -266,7 +275,7 @@ function updateDisplay(state)
     });
 
     // Render battlefield: separate Grizzly Bears and Forests
-    const bfCards = state.zones.Battlefield || [];
+    const bfCards = state.players[state.current_player_index].zones.Battlefield || [];
     
     const grizzlies = bfCards.filter(c => c.name === "Grizzly Bears");
     const forests = bfCards.filter(c => c.name === "Forest");
@@ -345,6 +354,170 @@ async function render()
     updateDisplay(state);
 }
 
+// Music Functions
+let musicEnabled = localStorage.getItem('musicEnabled') !== 'false';
+let musicFiles = [];
+let shuffledPlaylist = [];
+let currentPlaylistIndex = 0;
+
+// Fisher-Yates shuffle algorithm
+function shuffleArray(array) 
+{
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) 
+    {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
+async function loadMusicFiles()
+{
+    try
+    {
+        const response = await fetch('/api/music-list');
+        const data = await response.json();
+        musicFiles = data.files.map(file => `/music/${file}`);
+        
+        if (musicFiles.length > 0)
+        {
+            // Create initial shuffled playlist
+            shuffledPlaylist = shuffleArray(musicFiles);
+            currentPlaylistIndex = 0;
+            console.log("Music files loaded and shuffled:", shuffledPlaylist);
+        }
+        else
+        {
+            console.warn("No music files found on server");
+            document.getElementById('nowPlayingName').textContent = 'No music files found';
+        }
+    }
+    catch (e)
+    {
+        console.error("Failed to load music files:", e);
+        document.getElementById('nowPlayingName').textContent = 'Error loading music';
+    }
+}
+
+function updateNowPlaying()
+{
+    if (shuffledPlaylist.length > 0 && currentPlaylistIndex < shuffledPlaylist.length)
+    {
+        const currentFile = shuffledPlaylist[currentPlaylistIndex];
+        // Extract the filename from the path
+        const filename = currentFile.split('/').pop();
+        document.getElementById('nowPlayingName').textContent = filename;
+    }
+}
+
+function playNextMusic()
+{
+    if (musicFiles.length === 0)
+    {
+        // Try loading again
+        loadMusicFiles().then(() =>
+        {
+            if (musicFiles.length > 0)
+            {
+                playNextMusic();
+            }
+        });
+        return;
+    }
+    
+    // If we've reached the end of the playlist, reshuffle
+    if (currentPlaylistIndex >= shuffledPlaylist.length)
+    {
+        shuffledPlaylist = shuffleArray(musicFiles);
+        currentPlaylistIndex = 0;
+        console.log("Playlist reshuffled");
+    }
+    
+    const audioElement = document.getElementById('backgroundMusic');
+    const musicFile = shuffledPlaylist[currentPlaylistIndex];
+    audioElement.src = musicFile;
+    
+    updateNowPlaying();
+    
+    if (musicEnabled)
+    {
+        audioElement.volume = 0.3; // 30% volume
+        audioElement.play().catch(e => 
+        {
+            console.warn("Failed to play music:", e);
+        });
+    }
+    
+    currentPlaylistIndex++;
+}
+
+function skipMusic()
+{
+    const audioElement = document.getElementById('backgroundMusic');
+    audioElement.pause();
+    audioElement.currentTime = 0;
+    
+    // Play the next song after a short delay
+    setTimeout(playNextMusic, 100);
+}
+
+function toggleMusic()
+{
+    musicEnabled = !musicEnabled;
+    const button = document.getElementById('musicToggle');
+    const audioElement = document.getElementById('backgroundMusic');
+    
+    if (musicEnabled)
+    {
+        button.textContent = '🔊 Music On';
+        button.style.backgroundColor = 'lightgreen';
+        if (audioElement.src)
+        {
+            audioElement.play().catch(e =>
+            {
+                console.warn("Failed to play music:", e);
+            });
+        }
+    }
+    else
+    {
+        button.textContent = '🔇 Music Off';
+        button.style.backgroundColor = 'lightcoral';
+        audioElement.pause();
+    }
+    
+    localStorage.setItem('musicEnabled', musicEnabled);
+}
+
 // Initial render and setup
 render();
 updateDeckInfo();
+
+// Load and play music
+loadMusicFiles().then(() =>
+{
+    if (musicFiles.length > 0)
+    {
+        playNextMusic();
+        
+        // Setup music to play the next track when current ends
+        const audioElement = document.getElementById('backgroundMusic');
+        audioElement.addEventListener('ended', () =>
+        {
+            setTimeout(playNextMusic, 2000); // 2 second delay between songs
+        });
+    }
+    else
+    {
+        console.warn("No music files found");
+    }
+});
+
+// Restore music button state
+if (!musicEnabled)
+{
+    const button = document.getElementById('musicToggle');
+    button.textContent = '🔇 Music Off';
+    button.style.backgroundColor = 'lightcoral';
+}

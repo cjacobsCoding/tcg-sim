@@ -47,6 +47,7 @@ pub mod creature;
 pub mod game;
 pub mod tappable;
 pub mod sim;
+pub mod music;
 
 pub use crate::card::*;
 pub use crate::creature::*;

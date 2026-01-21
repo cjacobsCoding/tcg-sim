@@ -20,6 +20,17 @@ body
 {
   display: flex;
   gap: 10px;
+  margin-bottom: 20px;
+}
+
+.music-info
+{
+  padding: 10px;
+  background-color: #333;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  color: #aaa;
 }
 
 .deck-info div 

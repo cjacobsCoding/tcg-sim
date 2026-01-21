@@ -58,29 +58,24 @@ impl ProgramState
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GameState 
+pub struct Player
 {
-    pub zones: HashMap<Zone, Vec<Card>>,
-
     pub life: i32,
-    pub turns: u32,
-
-    pub step: GameStep,
+    pub zones: HashMap<Zone, Vec<Card>>,
 }
 
-impl GameState 
+impl Player
 {
-    // TODO: Pass through list of players and their chosen decks instead of just one deck
-    pub fn new(deck: &Deck) -> Self 
+    pub fn new(deck: &Deck) -> Self
     {
         let mut rng = thread_rng();
         let mut library = deck.cards.clone();
         library.shuffle(&mut rng);
 
         let mut hand = Vec::new();
-        for _ in 0..7 
+        for _ in 0..7
         {
-            if let Some(card) = library.pop() 
+            if let Some(card) = library.pop()
             {
                 hand.push(card);
             }
@@ -91,19 +86,87 @@ impl GameState
         zones.insert(Zone::Hand, hand);
         zones.insert(Zone::Battlefield, Vec::new());
         zones.insert(Zone::Graveyard, Vec::new());
+        zones.insert(Zone::Exile, Vec::new());
 
-        GameState 
+        Player
         {
-            zones,
             life: 20,
+            zones,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GameState 
+{
+    pub players: Vec<Player>,
+    pub current_player_index: usize,
+    pub turns: u32,
+    pub step: GameStep,
+}
+
+impl GameState 
+{
+    pub fn new(player_count: usize, deck: &Deck) -> Self 
+    {
+        let mut players = Vec::new();
+        for _ in 0..player_count.max(2) // Minimum 2 players
+        {
+            players.push(Player::new(deck));
+        }
+
+        GameState
+        {
+            players,
+            current_player_index: 0,
             turns: 0,
             step: GameStep::StartTurn,
         }
     }
 
     pub fn new_default() -> Self {
-        let deck = Deck::example(); // or however you create a starter deck
-        Self::new(&deck)
+        let deck = Deck::example();
+        Self::new(2, &deck) // Default 2 players
+    }
+
+    pub fn current_player(&self) -> &Player {
+        &self.players[self.current_player_index]
+    }
+
+    pub fn current_player_mut(&mut self) -> &mut Player {
+        &mut self.players[self.current_player_index]
+    }
+
+    pub fn other_players(&self) -> Vec<&Player> {
+        self.players.iter().enumerate()
+            .filter(|(i, _)| *i != self.current_player_index)
+            .map(|(_, p)| p)
+            .collect()
+    }
+
+    pub fn other_players_mut(&mut self) -> Vec<&mut Player> {
+        let current_idx = self.current_player_index;
+        self.players.iter_mut().enumerate()
+            .filter(|(i, _)| *i != current_idx)
+            .map(|(_, p)| p)
+            .collect()
+    }
+
+    // Backward compatibility: access current player's zones
+    pub fn zones(&self) -> &HashMap<Zone, Vec<Card>> {
+        &self.current_player().zones
+    }
+
+    pub fn zones_mut(&mut self) -> &mut HashMap<Zone, Vec<Card>> {
+        &mut self.current_player_mut().zones
+    }
+
+    pub fn life(&self) -> i32 {
+        self.current_player().life
+    }
+
+    pub fn set_life(&mut self, life: i32) {
+        self.current_player_mut().life = life;
     }
 }
 
@@ -123,7 +186,7 @@ impl GameState
             {
                 // Untap all tappable cards
                 {
-                    let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                    let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
                     for card in battlefield.iter_mut()
                     {
                         if crate::tappable::is_tapped(card)
@@ -139,7 +202,7 @@ impl GameState
             GameStep::Upkeep =>
             {
                 // Remove summoning sickness from creatures that have it
-                let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
                 for card in battlefield.iter_mut()
                 {
                     crate::creature::set_summoning_sickness(card, false);
@@ -152,13 +215,13 @@ impl GameState
             {
                 let card = 
                 {
-                    let library = self.zones.get_mut(&Zone::Library).unwrap();
+                    let library = self.zones_mut().get_mut(&Zone::Library).unwrap();
                     library.pop()
                 };
 
                 if let Some(card) = card 
                 {
-                    let hand = self.zones.get_mut(&Zone::Hand).unwrap();
+                    let hand = self.zones_mut().get_mut(&Zone::Hand).unwrap();
                     hand.push(card);
                     self.step = GameStep::Main;
                 } 
@@ -174,7 +237,7 @@ impl GameState
                 {
                     let card_option =
                     {
-                        let hand = self.zones.get_mut(&Zone::Hand).unwrap();
+                        let hand = self.zones_mut().get_mut(&Zone::Hand).unwrap();
                         if let Some(pos) = hand.iter().position(|c| c.is_type(crate::card::CardType::Land))
                         {
                             Some(hand.remove(pos))  // hand borrow ends here
@@ -187,7 +250,7 @@ impl GameState
 
                     if let Some(card) = card_option
                     {
-                        let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                        let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
                         battlefield.push(card);
                     }
                 }
@@ -196,13 +259,13 @@ impl GameState
                 loop
                 {
                     // Count available untapped lands as available mana
-                    let available_mana = self.zones.get(&Zone::Battlefield).unwrap().iter().filter(|card| 
+                    let available_mana = self.zones().get(&Zone::Battlefield).unwrap().iter().filter(|card| 
                         card.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(card)).count() as u32;
 
                     // Find first castable creature in hand
                     let cast_pos = 
                     {
-                        let hand = self.zones.get(&Zone::Hand).unwrap();
+                        let hand = self.zones().get(&Zone::Hand).unwrap();
                         hand.iter().position(|card| crate::creature::is_creature(card) && card.cost <= available_mana)
                     };
 
@@ -211,7 +274,7 @@ impl GameState
                         // Remove card first
                         let mut card = 
                         {
-                            let hand = self.zones.get_mut(&Zone::Hand).unwrap();
+                            let hand = self.zones_mut().get_mut(&Zone::Hand).unwrap();
                             hand.remove(pos)
                         };
 
@@ -223,7 +286,7 @@ impl GameState
                         // Tap lands to pay for the creature's cost
                         let mut need = card.cost;
                         {
-                            let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                            let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
                             for b in battlefield.iter_mut().filter(|c| c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)) 
                             {
                                 if need == 0 
@@ -236,7 +299,7 @@ impl GameState
                         }
 
                         // Put the card onto the battlefield
-                        let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                        let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
                         battlefield.push(card);
                     }
                     else
@@ -251,7 +314,7 @@ impl GameState
 
             GameStep::Combat =>
             {
-                let battlefield = self.zones.get_mut(&Zone::Battlefield).unwrap();
+                let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
                 let mut damage = 0;
                 for card in battlefield.iter_mut().filter(|card| card.is_type(crate::card::CardType::Creature) && !crate::creature::has_summoning_sickness(card) && !crate::tappable::is_tapped(card))
                 {
@@ -259,20 +322,24 @@ impl GameState
                     crate::tappable::set_tapped(card, true);
                 }
 
-                self.life -= damage as i32;
-
-                if self.life <= 0
-                {
-                    self.step = GameStep::GameOver;
+                // Apply damage to all other players
+                for other_player in self.other_players_mut() {
+                    other_player.life -= damage as i32;
                 }
-                else
-                {
+
+                // Check if any player has lost
+                let anyone_dead = self.players.iter().any(|p| p.life <= 0);
+                if anyone_dead {
+                    self.step = GameStep::GameOver;
+                } else {
                     self.step = GameStep::EndTurn;
                 }
             }
 
             GameStep::EndTurn =>
             {
+                // Advance to next player
+                self.current_player_index = (self.current_player_index + 1) % self.players.len();
                 self.step = GameStep::StartTurn;
             }
 
@@ -292,7 +359,7 @@ impl GameState
     {
         println!("Turn: {}", self.turns);
         println!("Step: {:?}", self.step);
-        println!("Life: {}", self.life);
+        println!("Life: {}", self.life());
 
         if verbose 
         {
@@ -309,7 +376,7 @@ impl GameState
         // Print only zone counts
         for zone in &[Zone::Hand, Zone::Battlefield, Zone::Library, Zone::Graveyard, Zone::Exile]
         {
-            let cards = self.zones.get(zone).unwrap();
+            let cards = self.zones().get(zone).unwrap();
             println!("{:?}: {} cards", zone, cards.len());
         }
     }
@@ -318,7 +385,7 @@ impl GameState
     {
         for zone in &[Zone::Hand, Zone::Battlefield, Zone::Library, Zone::Graveyard]
         {
-            let cards = self.zones.get(zone).unwrap();
+            let cards = self.zones().get(zone).unwrap();
             if cards.is_empty() && (*zone == Zone::Battlefield || *zone == Zone::Graveyard)
             {
                 continue;

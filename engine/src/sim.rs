@@ -30,7 +30,7 @@ fn wait_for_command() -> StepCommand
 
 pub fn simulate_game(deck: &Deck, step_mode: StepCommand) -> (u32, StepCommand)
 {
-    let mut game = GameState::new(deck);
+    let mut game = GameState::new(2, deck); // Default 2 players
     let mut mode = step_mode;
 
     loop

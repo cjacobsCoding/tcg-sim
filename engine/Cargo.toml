@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
+rodio = "0.18"
+walkdir = "2"
 
 [dev-dependencies]
 serde_json = "1.0"
