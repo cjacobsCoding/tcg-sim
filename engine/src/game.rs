@@ -14,7 +14,9 @@ pub enum GameStep
     Upkeep,
     Draw,
     Main,
-    Combat,
+    DeclareAttackers,
+    DeclareBlockers,
+    AssignDamage,
     EndTurn,
     GameOver,
 }
@@ -103,6 +105,8 @@ pub struct GameState
     pub current_player_index: usize,
     pub turns: u32,
     pub step: GameStep,
+    pub attacking_creatures: Vec<usize>, // indices of creatures on battlefield that are attacking
+    pub blocking_map: HashMap<usize, usize>, // maps blocker index to attacker index
 }
 
 impl GameState 
@@ -121,6 +125,8 @@ impl GameState
             current_player_index: 0,
             turns: 0,
             step: GameStep::StartTurn,
+            attacking_creatures: Vec::new(),
+            blocking_map: HashMap::new(),
         }
     }
 
@@ -309,23 +315,132 @@ impl GameState
                     }
                 }
 
-                self.step = GameStep::Combat;
+                self.step = GameStep::DeclareAttackers;
             }
 
-            GameStep::Combat =>
+            GameStep::DeclareAttackers =>
             {
-                let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
-                let mut damage = 0;
-                for card in battlefield.iter_mut().filter(|card| card.is_type(crate::card::CardType::Creature) && !crate::creature::has_summoning_sickness(card) && !crate::tappable::is_tapped(card))
+                // Auto-attack: select all untapped creatures without summoning sickness
+                let attacking_indices = {
+                    let battlefield = self.zones().get(&Zone::Battlefield).unwrap();
+                    let mut indices = Vec::new();
+                    for (i, card) in battlefield.iter().enumerate()
+                    {
+                        if card.is_type(crate::card::CardType::Creature) && 
+                           !crate::creature::has_summoning_sickness(card) && 
+                           !crate::tappable::is_tapped(card)
+                        {
+                            indices.push(i);
+                        }
+                    }
+                    indices
+                };
+
+                self.attacking_creatures = attacking_indices;
+
+                // Tap all attacking creatures
+                let attacking_to_tap = self.attacking_creatures.clone();
                 {
-                    damage += crate::creature::creature_stats(card).map(|stat| stat.power as u32).unwrap_or(0);
-                    crate::tappable::set_tapped(card, true);
+                    let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
+                    for idx in attacking_to_tap {
+                        if idx < battlefield.len() {
+                            crate::tappable::set_tapped(&mut battlefield[idx], true);
+                        }
+                    }
                 }
 
-                // Apply damage to all other players
-                for other_player in self.other_players_mut() {
-                    other_player.life -= damage as i32;
+                self.step = GameStep::DeclareBlockers;
+            }
+
+            GameStep::DeclareBlockers =>
+            {
+                // For now, no blockers are declared automatically
+                // This phase is where interactive blocking would happen
+                self.blocking_map.clear();
+                self.step = GameStep::AssignDamage;
+            }
+
+            GameStep::AssignDamage =>
+            {
+                let mut creatures_to_destroy = Vec::new();
+                let mut damage_to_apply = 0;
+                
+                // First pass: calculate damage
+                {
+                    let battlefield = self.zones().get(&Zone::Battlefield).unwrap();
+                    
+                    for attacker_idx in &self.attacking_creatures {
+                        if *attacker_idx >= battlefield.len() {
+                            continue;
+                        }
+
+                        let attacker_power = crate::creature::creature_stats(&battlefield[*attacker_idx])
+                            .map(|stats| stats.power as i32)
+                            .unwrap_or(0);
+
+                        // Check if this attacker is blocked
+                        let blocked_by = self.blocking_map.iter()
+                            .find(|(_, attacker)| **attacker == *attacker_idx)
+                            .map(|(blocker, _)| *blocker);
+
+                        if let Some(blocker_idx) = blocked_by {
+                            if blocker_idx < battlefield.len() {
+                                // Attacker and blocker deal damage to each other
+                                let blocker_toughness = crate::creature::creature_stats(&battlefield[blocker_idx])
+                                    .map(|stats| stats.toughness as i32)
+                                    .unwrap_or(0);
+                                let blocker_power = crate::creature::creature_stats(&battlefield[blocker_idx])
+                                    .map(|stats| stats.power as i32)
+                                    .unwrap_or(0);
+
+                                if attacker_power >= blocker_toughness {
+                                    creatures_to_destroy.push(blocker_idx);
+                                }
+                                let attacker_toughness = crate::creature::creature_stats(&battlefield[*attacker_idx])
+                                    .map(|stats| stats.toughness as i32)
+                                    .unwrap_or(0);
+                                if blocker_power >= attacker_toughness {
+                                    creatures_to_destroy.push(*attacker_idx);
+                                }
+                            }
+                        } else {
+                            // Unblocked: damage goes to opponent's life
+                            damage_to_apply += attacker_power;
+                        }
+                    }
                 }
+
+                // Apply damage to opponents
+                for other_player in self.other_players_mut() {
+                    other_player.life -= damage_to_apply;
+                }
+
+                // Destroy creatures that took lethal damage
+                creatures_to_destroy.sort_by(|a, b| b.cmp(a)); // Sort reverse to remove from end first
+                creatures_to_destroy.dedup();
+                
+                let destroyed_cards = {
+                    let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
+                    let mut cards = Vec::new();
+                    for idx in creatures_to_destroy {
+                        if idx < battlefield.len() {
+                            cards.push(battlefield.remove(idx));
+                        }
+                    }
+                    cards
+                };
+
+                // Move destroyed cards to graveyard
+                {
+                    let graveyard = self.zones_mut().get_mut(&Zone::Graveyard).unwrap();
+                    for card in destroyed_cards {
+                        graveyard.push(card);
+                    }
+                }
+
+                // Clear attacking and blocking data
+                self.attacking_creatures.clear();
+                self.blocking_map.clear();
 
                 // Check if any player has lost
                 let anyone_dead = self.players.iter().any(|p| p.life <= 0);
