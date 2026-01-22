@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::signal;
 use std::path::PathBuf;
 use socket2::{Socket, Domain, Type};
+use serde::{Deserialize, Serialize};
 
 /// Find the web directory relative to the project root
 fn find_web_dir() -> PathBuf {
@@ -93,6 +94,8 @@ async fn main()
         .route("/deck", post(post_deck))
         .route("/all", post(post_all))
         .route("/restart", post(post_restart))
+        .route("/declare-attackers", post(post_declare_attackers))
+        .route("/declare-blockers", post(post_declare_blockers))
         .route("/music-list", get(get_music_list))
         .route("/shutdown", post({
             let flag = shutdown_flag.clone();
@@ -177,7 +180,46 @@ async fn main()
         }
     }
 }
+#[derive(Deserialize, Serialize)]
+pub struct DeclareAttackersRequest {
+    pub attacking_indices: Vec<usize>,
+}
 
+#[derive(Deserialize, Serialize)]
+pub struct DeclareBlockersRequest {
+    pub blocking_map: std::collections::HashMap<usize, usize>, // blocker index -> attacker index
+}
+
+async fn post_declare_attackers(
+    Extension(game): Extension<Arc<Mutex<GameState>>>,
+    Json(payload): Json<DeclareAttackersRequest>,
+) -> Json<GameState> {
+    let mut g = game.lock().unwrap();
+    g.attacking_creatures = payload.attacking_indices;
+    
+    // Tap all attacking creatures
+    let attacking_to_tap = g.attacking_creatures.clone();
+    if let Some(battlefield) = g.zones_mut().get_mut(&engine::Zone::Battlefield) {
+        for idx in attacking_to_tap {
+            if idx < battlefield.len() {
+                engine::tappable::set_tapped(&mut battlefield[idx], true);
+            }
+        }
+    }
+    
+    g.step = GameStep::DeclareBlockers;
+    Json(g.clone())
+}
+
+async fn post_declare_blockers(
+    Extension(game): Extension<Arc<Mutex<GameState>>>,
+    Json(payload): Json<DeclareBlockersRequest>,
+) -> Json<GameState> {
+    let mut g = game.lock().unwrap();
+    g.blocking_map = payload.blocking_map;
+    g.step = GameStep::AssignDamage;
+    Json(g.clone())
+}
 async fn get_state(Extension(game): Extension<Arc<Mutex<GameState>>>) -> Json<GameState> {
     Json(game.lock().unwrap().clone())
 }

@@ -276,6 +276,34 @@ body
   margin: 0;
 }
 
+/* Graveyard section */
+.graveyard-section
+{
+  margin-top: 80px;
+  margin-left: 350px;
+  position: relative;
+  width: 100px;
+  min-height: 130px;
+  flex-shrink: 0;
+}
+
+.graveyard-section .card
+{
+  position: absolute;
+  width: 60px;
+  height: 80px;
+}
+
+.graveyard-section .zone-label
+{
+  position: absolute;
+  bottom: -25px;
+  left: 0;
+  font-size: 11px;
+  color: #aaa;
+  margin: 0;
+}
+
 /* Hand section */
 .hand-section
 {
