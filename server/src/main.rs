@@ -96,6 +96,7 @@ async fn main()
         .route("/restart", post(post_restart))
         .route("/declare-attackers", post(post_declare_attackers))
         .route("/declare-blockers", post(post_declare_blockers))
+        .route("/toggle-auto-play", post(post_toggle_auto_play))
         .route("/music-list", get(get_music_list))
         .route("/shutdown", post({
             let flag = shutdown_flag.clone();
@@ -324,6 +325,14 @@ async fn get_music_list() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "files": music_files
     }))
+}
+
+async fn post_toggle_auto_play(
+    Extension(game): Extension<Arc<Mutex<GameState>>>,
+) -> Json<GameState> {
+    let mut g = game.lock().unwrap();
+    g.auto_play = !g.auto_play;
+    Json(g.clone())
 }
 
 async fn index() -> impl IntoResponse {

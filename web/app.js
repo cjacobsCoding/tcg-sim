@@ -116,6 +116,24 @@ async function stopServer()
     }
 }
 
+async function toggleAutoPlay()
+{
+    try 
+    {
+        const response = await fetch(`${API_PREFIX}/toggle-auto-play`, { method: "POST" });
+        const newState = await response.json();
+        updateDisplay(newState);
+        
+        // Update the checkbox to reflect the new state
+        const checkbox = document.getElementById('autoPlayCheckbox');
+        checkbox.checked = newState.auto_play;
+    } 
+    catch (e) 
+    {
+        console.error("Error toggling auto-play:", e);
+    }
+}
+
 function formatPhase(phase) {
     // Convert GameStep enum to readable text
     const phaseNames = 
@@ -683,6 +701,12 @@ function updateDisplay(state)
         return;
     }
 
+    // Update auto-play checkbox state
+    const checkbox = document.getElementById('autoPlayCheckbox');
+    if (checkbox) {
+        checkbox.checked = state.auto_play;
+    }
+
     // Update phase, current player, and turns
     const phaseElement = document.getElementById("phase");
     const currentPlayerElement = document.getElementById("currentPlayer");
@@ -889,7 +913,7 @@ function toggleMusic()
     
     if (musicEnabled)
     {
-        button.textContent = '🔊 Music On';
+        button.textContent = '🔊 Mute';
         button.style.backgroundColor = 'lightgreen';
         if (audioElement.src)
         {
@@ -901,7 +925,7 @@ function toggleMusic()
     }
     else
     {
-        button.textContent = '🔇 Music Off';
+        button.textContent = '🔇 Unmute';
         button.style.backgroundColor = 'lightcoral';
         audioElement.pause();
     }
@@ -937,6 +961,6 @@ loadMusicFiles().then(() =>
 if (!musicEnabled)
 {
     const button = document.getElementById('musicToggle');
-    button.textContent = '🔇 Music Off';
+    button.textContent = '🔇 Unmute';
     button.style.backgroundColor = 'lightcoral';
 }

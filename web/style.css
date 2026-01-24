@@ -23,6 +23,41 @@ body
   margin-bottom: 20px;
 }
 
+.auto-play-control
+{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  background-color: #333;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.auto-play-control label
+{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #aaa;
+  user-select: none;
+}
+
+.auto-play-control input[type="checkbox"]
+{
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  accent-color: #4CAF50;
+}
+
+.auto-play-control input[type="checkbox"]:hover
+{
+  accent-color: #5CBF60;
+}
+
 .music-info
 {
   padding: 10px;
