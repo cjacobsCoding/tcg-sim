@@ -30,6 +30,10 @@
 
   <div class="music-info">
     <div>Now Playing: <span id="nowPlayingName">Loading music...</span></div>
+    <div class="volume-control">
+      <label for="volumeSlider">Volume:</label>
+      <input type="range" id="volumeSlider" min="0" max="100" value="30" onchange="setMusicVolume(this.value)" oninput="setMusicVolume(this.value)">
+    </div>
   </div>
 
   <div class="game-info">

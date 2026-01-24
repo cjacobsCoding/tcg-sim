@@ -6,6 +6,14 @@ let selectedAttackers = new Set();
 let selectedBlockers = new Map(); // blocker index -> attacker index
 let currentGameState = null;
 
+function setMusicVolume(value) {
+    const audioElement = document.getElementById('backgroundMusic');
+    if (audioElement) {
+        audioElement.volume = value / 100;
+        localStorage.setItem('musicVolume', value);
+    }
+}
+
 async function fetchState()
 {
     try 
@@ -885,7 +893,8 @@ function playNextMusic()
     
     if (musicEnabled)
     {
-        audioElement.volume = 0.3; // 30% volume
+        const savedVolume = localStorage.getItem('musicVolume') || 30;
+        audioElement.volume = savedVolume / 100;
         audioElement.play().catch(e => 
         {
             console.warn("Failed to play music:", e);
@@ -964,3 +973,13 @@ if (!musicEnabled)
     button.textContent = '🔇 Unmute';
     button.style.backgroundColor = 'lightcoral';
 }
+
+// Restore volume slider position from localStorage
+window.addEventListener('DOMContentLoaded', () => {
+    const savedVolume = localStorage.getItem('musicVolume') || 30;
+    const volumeSlider = document.getElementById('volumeSlider');
+    if (volumeSlider) {
+        volumeSlider.value = savedVolume;
+        setMusicVolume(savedVolume);
+    }
+});
