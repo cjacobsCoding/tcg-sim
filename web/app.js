@@ -6,6 +6,14 @@ let selectedAttackers = new Set();
 let selectedBlockers = new Map(); // blocker index -> attacker index
 let currentGameState = null;
 
+function setMusicVolume(value) {
+    const audioElement = document.getElementById('backgroundMusic');
+    if (audioElement) {
+        audioElement.volume = value / 100;
+        localStorage.setItem('musicVolume', value);
+    }
+}
+
 async function fetchState()
 {
     try 
@@ -116,6 +124,24 @@ async function stopServer()
     }
 }
 
+async function toggleAutoPlay()
+{
+    try 
+    {
+        const response = await fetch(`${API_PREFIX}/toggle-auto-play`, { method: "POST" });
+        const newState = await response.json();
+        updateDisplay(newState);
+        
+        // Update the checkbox to reflect the new state
+        const checkbox = document.getElementById('autoPlayCheckbox');
+        checkbox.checked = newState.auto_play;
+    } 
+    catch (e) 
+    {
+        console.error("Error toggling auto-play:", e);
+    }
+}
+
 function formatPhase(phase) {
     // Convert GameStep enum to readable text
     const phaseNames = 
@@ -223,6 +249,27 @@ function drawBlockingArrows() {
     polygon.setAttribute('points', '0 0, 10 3, 0 6');
     polygon.setAttribute('fill', '#FF9500');
     marker.appendChild(polygon);
+    
+    // Add glow filter
+    const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    filter.setAttribute('id', 'glow');
+    filter.setAttribute('x', '-50%');
+    filter.setAttribute('y', '-50%');
+    filter.setAttribute('width', '200%');
+    filter.setAttribute('height', '200%');
+    const feGaussianBlur = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+    feGaussianBlur.setAttribute('stdDeviation', '3');
+    feGaussianBlur.setAttribute('result', 'coloredBlur');
+    filter.appendChild(feGaussianBlur);
+    const feMerge = document.createElementNS('http://www.w3.org/2000/svg', 'feMerge');
+    const feMergeNode1 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+    feMergeNode1.setAttribute('in', 'coloredBlur');
+    const feMergeNode2 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+    feMergeNode2.setAttribute('in', 'SourceGraphic');
+    feMerge.appendChild(feMergeNode1);
+    feMerge.appendChild(feMergeNode2);
+    filter.appendChild(feMerge);
+    defs.appendChild(filter);
     defs.appendChild(marker);
     svg.appendChild(defs);
     
@@ -241,8 +288,119 @@ function drawBlockingArrows() {
             line.setAttribute('x2', attackerRect.left + attackerRect.width / 2);
             line.setAttribute('y2', attackerRect.top + attackerRect.height / 2);
             line.setAttribute('stroke', '#FF9500');
-            line.setAttribute('stroke-width', '2');
+            line.setAttribute('stroke-width', '3');
             line.setAttribute('marker-end', 'url(#arrow)');
+            line.setAttribute('filter', 'url(#glow)');
+            svg.appendChild(line);
+        }
+    }
+    
+    document.body.appendChild(svg);
+}
+
+function drawAutoPlayBlockingArrows() {
+    // Draw blocking arrows for auto-play mode from the actual blocking_map
+    const existingSvg = document.getElementById('auto-blocking-arrows-svg');
+    if (existingSvg) {
+        existingSvg.remove();
+    }
+    
+    if (!currentGameState || !currentGameState.blocking_map || Object.keys(currentGameState.blocking_map).length === 0) {
+        return;
+    }
+    
+    // Create SVG overlay for arrows
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'auto-blocking-arrows-svg';
+    svg.style.position = 'fixed';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.style.zIndex = '5000';
+    
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    
+    // Add glow filter
+    const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    filter.setAttribute('id', 'glow-cyan');
+    filter.setAttribute('x', '-50%');
+    filter.setAttribute('y', '-50%');
+    filter.setAttribute('width', '200%');
+    filter.setAttribute('height', '200%');
+    const feGaussianBlur = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+    feGaussianBlur.setAttribute('stdDeviation', '4');
+    feGaussianBlur.setAttribute('result', 'coloredBlur');
+    filter.appendChild(feGaussianBlur);
+    const feMerge = document.createElementNS('http://www.w3.org/2000/svg', 'feMerge');
+    const feMergeNode1 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+    feMergeNode1.setAttribute('in', 'coloredBlur');
+    const feMergeNode2 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+    feMergeNode2.setAttribute('in', 'SourceGraphic');
+    feMerge.appendChild(feMergeNode1);
+    feMerge.appendChild(feMergeNode2);
+    filter.appendChild(feMerge);
+    defs.appendChild(filter);
+    
+    // Add arrow marker
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'arrow-cyan');
+    marker.setAttribute('markerWidth', '10');
+    marker.setAttribute('markerHeight', '10');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('orient', 'auto');
+    marker.setAttribute('markerUnits', 'strokeWidth');
+    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    polygon.setAttribute('points', '0 0, 10 3, 0 6');
+    polygon.setAttribute('fill', '#00FFFF');
+    marker.appendChild(polygon);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+    
+    // Draw lines for each blocking relationship from blocking_map
+    for (const [blockerIdxStr, attackerIdxStr] of Object.entries(currentGameState.blocking_map)) {
+        const blockerIdx = parseInt(blockerIdxStr);
+        const attackerIdx = parseInt(attackerIdxStr);
+        
+        // Find all cards on battlefield to locate blockers and attackers
+        const allCards = document.querySelectorAll('.card[data-creature-index]');
+        let blockerCard = null;
+        let attackerCard = null;
+        
+        // Search for blocker in opponent's battlefield (top player)
+        const opponentBattlefield = document.querySelector('.player-wrapper[data-player-index="1"] .grizzlies-section');
+        if (opponentBattlefield) {
+            const cards = opponentBattlefield.querySelectorAll('.card');
+            if (blockerIdx < cards.length) {
+                blockerCard = cards[blockerIdx];
+            }
+        }
+        
+        // Search for attacker in current player's battlefield (bottom player)
+        const currentBattlefield = document.querySelector('.player-wrapper[data-player-index="0"] .grizzlies-section');
+        if (currentBattlefield) {
+            const cards = currentBattlefield.querySelectorAll('.card');
+            if (attackerIdx < cards.length) {
+                attackerCard = cards[attackerIdx];
+            }
+        }
+        
+        if (blockerCard && attackerCard) {
+            const blockerRect = blockerCard.getBoundingClientRect();
+            const attackerRect = attackerCard.getBoundingClientRect();
+            
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', blockerRect.left + blockerRect.width / 2);
+            line.setAttribute('y1', blockerRect.top + blockerRect.height / 2);
+            line.setAttribute('x2', attackerRect.left + attackerRect.width / 2);
+            line.setAttribute('y2', attackerRect.top + attackerRect.height / 2);
+            line.setAttribute('stroke', '#00FFFF');
+            line.setAttribute('stroke-width', '3');
+            line.setAttribute('marker-end', 'url(#arrow-cyan)');
+            line.setAttribute('filter', 'url(#glow-cyan)');
+            line.setAttribute('opacity', '0.8');
             svg.appendChild(line);
         }
     }
@@ -683,6 +841,12 @@ function updateDisplay(state)
         return;
     }
 
+    // Update auto-play checkbox state
+    const checkbox = document.getElementById('autoPlayCheckbox');
+    if (checkbox) {
+        checkbox.checked = state.auto_play;
+    }
+
     // Update phase, current player, and turns
     const phaseElement = document.getElementById("phase");
     const currentPlayerElement = document.getElementById("currentPlayer");
@@ -765,6 +929,7 @@ function updateDisplay(state)
     
     // Redraw blocking arrows
     setTimeout(drawBlockingArrows, 100);
+    setTimeout(drawAutoPlayBlockingArrows, 100);
 }
 
 async function render()
@@ -861,7 +1026,8 @@ function playNextMusic()
     
     if (musicEnabled)
     {
-        audioElement.volume = 0.3; // 30% volume
+        const savedVolume = localStorage.getItem('musicVolume') || 30;
+        audioElement.volume = savedVolume / 100;
         audioElement.play().catch(e => 
         {
             console.warn("Failed to play music:", e);
@@ -889,7 +1055,7 @@ function toggleMusic()
     
     if (musicEnabled)
     {
-        button.textContent = '🔊 Music On';
+        button.textContent = '🔊 Mute';
         button.style.backgroundColor = 'lightgreen';
         if (audioElement.src)
         {
@@ -901,7 +1067,7 @@ function toggleMusic()
     }
     else
     {
-        button.textContent = '🔇 Music Off';
+        button.textContent = '🔇 Unmute';
         button.style.backgroundColor = 'lightcoral';
         audioElement.pause();
     }
@@ -937,6 +1103,16 @@ loadMusicFiles().then(() =>
 if (!musicEnabled)
 {
     const button = document.getElementById('musicToggle');
-    button.textContent = '🔇 Music Off';
+    button.textContent = '🔇 Unmute';
     button.style.backgroundColor = 'lightcoral';
 }
+
+// Restore volume slider position from localStorage
+window.addEventListener('DOMContentLoaded', () => {
+    const savedVolume = localStorage.getItem('musicVolume') || 30;
+    const volumeSlider = document.getElementById('volumeSlider');
+    if (volumeSlider) {
+        volumeSlider.value = savedVolume;
+        setMusicVolume(savedVolume);
+    }
+});

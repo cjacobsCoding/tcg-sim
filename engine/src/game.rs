@@ -107,6 +107,10 @@ pub struct GameState
     pub step: GameStep,
     pub attacking_creatures: Vec<usize>, // indices of creatures on battlefield that are attacking
     pub blocking_map: HashMap<usize, usize>, // maps blocker index to attacker index
+    pub auto_play: bool, // if false, wait for player decisions; if true, play automatically
+    pub waiting_for_main_decision: bool, // true when waiting for player to decide on playing lands/creatures
+    pub waiting_for_attack_decision: bool, // true when waiting for player to declare attackers
+    pub waiting_for_block_decision: bool, // true when waiting for player to declare blockers
 }
 
 impl GameState 
@@ -127,6 +131,10 @@ impl GameState
             step: GameStep::StartTurn,
             attacking_creatures: Vec::new(),
             blocking_map: HashMap::new(),
+            auto_play: true, // default to auto-play
+            waiting_for_main_decision: false,
+            waiting_for_attack_decision: false,
+            waiting_for_block_decision: false,
         }
     }
 
@@ -239,80 +247,86 @@ impl GameState
 
             GameStep::Main =>
             {
-                // Play up to one land
-                {
-                    let card_option =
+                if self.auto_play {
+                    // Play up to one land
                     {
-                        let hand = self.zones_mut().get_mut(&Zone::Hand).unwrap();
-                        if let Some(pos) = hand.iter().position(|c| c.is_type(crate::card::CardType::Land))
+                        let card_option =
                         {
-                            Some(hand.remove(pos))  // hand borrow ends here
+                            let hand = self.zones_mut().get_mut(&Zone::Hand).unwrap();
+                            if let Some(pos) = hand.iter().position(|c| c.is_type(crate::card::CardType::Land))
+                            {
+                                Some(hand.remove(pos))  // hand borrow ends here
+                            }
+                            else
+                            {
+                                None
+                            }
+                        };
+
+                        if let Some(card) = card_option
+                        {
+                            let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
+                            battlefield.push(card);
+                        }
+                    }
+
+                    // Cast as many creatures as possible until there is no more mana
+                    loop
+                    {
+                        // Count available untapped lands as available mana
+                        let available_mana = self.zones().get(&Zone::Battlefield).unwrap().iter().filter(|card| 
+                            card.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(card)).count() as u32;
+
+                        // Find first castable creature in hand
+                        let cast_pos = 
+                        {
+                            let hand = self.zones().get(&Zone::Hand).unwrap();
+                            hand.iter().position(|card| crate::creature::is_creature(card) && card.cost <= available_mana)
+                        };
+
+                        if let Some(pos) = cast_pos
+                        {
+                            // Remove card first
+                            let mut card = 
+                            {
+                                let hand = self.zones_mut().get_mut(&Zone::Hand).unwrap();
+                                hand.remove(pos)
+                            };
+
+                            vlog!(ELoggingVerbosity::Verbose, "Cast {}", card.name);
+
+                            // Newly cast creatures have summoning sickness
+                            crate::creature::set_summoning_sickness(&mut card, true);
+
+                            // Tap lands to pay for the creature's cost
+                            let mut need = card.cost;
+                            {
+                                let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
+                                for b in battlefield.iter_mut().filter(|c| c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)) 
+                                {
+                                    if need == 0 
+                                    { 
+                                        break; 
+                                    }
+                                    crate::tappable::set_tapped(b, true);
+                                    need -= 1;
+                                }
+                            }
+
+                            // Put the card onto the battlefield
+                            let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
+                            battlefield.push(card);
                         }
                         else
                         {
-                            None
+                            // Nothing more can be cast
+                            break;
                         }
-                    };
-
-                    if let Some(card) = card_option
-                    {
-                        let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
-                        battlefield.push(card);
                     }
-                }
-
-                // Cast as many creatures as possible until there is no more mana
-                loop
-                {
-                    // Count available untapped lands as available mana
-                    let available_mana = self.zones().get(&Zone::Battlefield).unwrap().iter().filter(|card| 
-                        card.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(card)).count() as u32;
-
-                    // Find first castable creature in hand
-                    let cast_pos = 
-                    {
-                        let hand = self.zones().get(&Zone::Hand).unwrap();
-                        hand.iter().position(|card| crate::creature::is_creature(card) && card.cost <= available_mana)
-                    };
-
-                    if let Some(pos) = cast_pos
-                    {
-                        // Remove card first
-                        let mut card = 
-                        {
-                            let hand = self.zones_mut().get_mut(&Zone::Hand).unwrap();
-                            hand.remove(pos)
-                        };
-
-                        vlog!(ELoggingVerbosity::Verbose, "Cast {}", card.name);
-
-                        // Newly cast creatures have summoning sickness
-                        crate::creature::set_summoning_sickness(&mut card, true);
-
-                        // Tap lands to pay for the creature's cost
-                        let mut need = card.cost;
-                        {
-                            let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
-                            for b in battlefield.iter_mut().filter(|c| c.is_type(crate::card::CardType::Land) && !crate::tappable::is_tapped(c)) 
-                            {
-                                if need == 0 
-                                { 
-                                    break; 
-                                }
-                                crate::tappable::set_tapped(b, true);
-                                need -= 1;
-                            }
-                        }
-
-                        // Put the card onto the battlefield
-                        let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
-                        battlefield.push(card);
-                    }
-                    else
-                    {
-                        // Nothing more can be cast
-                        break;
-                    }
+                } else if !self.waiting_for_main_decision {
+                    // When not auto-playing, wait for player input
+                    self.waiting_for_main_decision = true;
+                    return;
                 }
 
                 self.step = GameStep::DeclareAttackers;
@@ -320,33 +334,39 @@ impl GameState
 
             GameStep::DeclareAttackers =>
             {
-                // Auto-attack: select all untapped creatures without summoning sickness
-                let attacking_indices = {
-                    let battlefield = self.zones().get(&Zone::Battlefield).unwrap();
-                    let mut indices = Vec::new();
-                    for (i, card) in battlefield.iter().enumerate()
-                    {
-                        if card.is_type(crate::card::CardType::Creature) && 
-                           !crate::creature::has_summoning_sickness(card) && 
-                           !crate::tappable::is_tapped(card)
+                if self.auto_play {
+                    // Auto-attack: select all untapped creatures without summoning sickness
+                    let attacking_indices = {
+                        let battlefield = self.zones().get(&Zone::Battlefield).unwrap();
+                        let mut indices = Vec::new();
+                        for (i, card) in battlefield.iter().enumerate()
                         {
-                            indices.push(i);
+                            if card.is_type(crate::card::CardType::Creature) && 
+                               !crate::creature::has_summoning_sickness(card) && 
+                               !crate::tappable::is_tapped(card)
+                            {
+                                indices.push(i);
+                            }
+                        }
+                        indices
+                    };
+
+                    self.attacking_creatures = attacking_indices;
+
+                    // Tap all attacking creatures
+                    let attacking_to_tap = self.attacking_creatures.clone();
+                    {
+                        let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
+                        for idx in attacking_to_tap {
+                            if idx < battlefield.len() {
+                                crate::tappable::set_tapped(&mut battlefield[idx], true);
+                            }
                         }
                     }
-                    indices
-                };
-
-                self.attacking_creatures = attacking_indices;
-
-                // Tap all attacking creatures
-                let attacking_to_tap = self.attacking_creatures.clone();
-                {
-                    let battlefield = self.zones_mut().get_mut(&Zone::Battlefield).unwrap();
-                    for idx in attacking_to_tap {
-                        if idx < battlefield.len() {
-                            crate::tappable::set_tapped(&mut battlefield[idx], true);
-                        }
-                    }
+                } else if !self.waiting_for_attack_decision {
+                    // Wait for player to declare attackers
+                    self.waiting_for_attack_decision = true;
+                    return;
                 }
 
                 self.step = GameStep::DeclareBlockers;
@@ -354,10 +374,59 @@ impl GameState
 
             GameStep::DeclareBlockers =>
             {
-                // For now, no blockers are declared automatically
-                // This phase is where interactive blocking would happen
-                self.blocking_map.clear();
+                if self.auto_play {
+                    // Auto-play blocking: block with creatures that can kill the attacker
+                    self.blocking_map.clear();
+                    
+                    // Collect blocking decisions while holding battlefield borrow
+                    let blocking_decisions = {
+                        let battlefield = self.zones().get(&Zone::Battlefield).unwrap();
+                        let mut used_blockers = std::collections::HashSet::new();
+                        let mut decisions = Vec::new();
+                        
+                        for attacker_idx in &self.attacking_creatures {
+                            if *attacker_idx >= battlefield.len() {
+                                continue;
+                            }
+                            
+                            let attacker_toughness = crate::creature::creature_stats(&battlefield[*attacker_idx])
+                                .map(|stats| stats.toughness as i32)
+                                .unwrap_or(0);
+                            
+                            // Find a blocker that can kill this attacker
+                            for (blocker_idx, blocker_card) in battlefield.iter().enumerate() {
+                                if used_blockers.contains(&blocker_idx) || self.attacking_creatures.contains(&blocker_idx) {
+                                    continue; // Already used or is attacking
+                                }
+                                
+                                let blocker_power = crate::creature::creature_stats(blocker_card)
+                                    .map(|stats| stats.power as i32)
+                                    .unwrap_or(0);
+                                
+                                if blocker_power >= attacker_toughness {
+                                    // This blocker can kill the attacker
+                                    decisions.push((blocker_idx, *attacker_idx));
+                                    used_blockers.insert(blocker_idx);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        decisions
+                    };
+                    
+                    // Now insert decisions into blocking_map (borrow released)
+                    for (blocker_idx, attacker_idx) in blocking_decisions {
+                        self.blocking_map.insert(blocker_idx, attacker_idx);
+                    }
+                } else if !self.waiting_for_block_decision {
+                    // Wait for player to declare blockers
+                    self.waiting_for_block_decision = true;
+                    return;
+                }
+
                 self.step = GameStep::AssignDamage;
+
             }
 
             GameStep::AssignDamage =>

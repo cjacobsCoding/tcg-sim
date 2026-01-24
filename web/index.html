@@ -12,9 +12,16 @@
     <button onclick="doStep('deck')">Skip Deck (d)</button>
     <button onclick="doStep('all')">Run All (r)</button>
     <button onclick="restart()">Restart</button>
-    <button id="musicToggle" onclick="toggleMusic()">🔊 Music On</button>
+    <button id="musicToggle" onclick="toggleMusic()">🔊 Mute</button>
     <button onclick="skipMusic()">⏭️ Skip Song</button>
     <button onclick="stopServer()">Stop Server</button>
+  </div>
+
+  <div class="auto-play-control">
+    <label for="autoPlayCheckbox">
+      <input type="checkbox" id="autoPlayCheckbox" checked onchange="toggleAutoPlay()">
+      Auto-Play Games
+    </label>
   </div>
 
   <!-- Background Music -->
@@ -23,6 +30,10 @@
 
   <div class="music-info">
     <div>Now Playing: <span id="nowPlayingName">Loading music...</span></div>
+    <div class="volume-control">
+      <label for="volumeSlider">Volume:</label>
+      <input type="range" id="volumeSlider" min="0" max="100" value="30" onchange="setMusicVolume(this.value)" oninput="setMusicVolume(this.value)">
+    </div>
   </div>
 
   <div class="game-info">
