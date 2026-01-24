@@ -375,9 +375,50 @@ impl GameState
             GameStep::DeclareBlockers =>
             {
                 if self.auto_play {
-                    // For now, no blockers are declared automatically
-                    // This phase is where interactive blocking would happen
+                    // Auto-play blocking: block with creatures that can kill the attacker
                     self.blocking_map.clear();
+                    
+                    // Collect blocking decisions while holding battlefield borrow
+                    let blocking_decisions = {
+                        let battlefield = self.zones().get(&Zone::Battlefield).unwrap();
+                        let mut used_blockers = std::collections::HashSet::new();
+                        let mut decisions = Vec::new();
+                        
+                        for attacker_idx in &self.attacking_creatures {
+                            if *attacker_idx >= battlefield.len() {
+                                continue;
+                            }
+                            
+                            let attacker_toughness = crate::creature::creature_stats(&battlefield[*attacker_idx])
+                                .map(|stats| stats.toughness as i32)
+                                .unwrap_or(0);
+                            
+                            // Find a blocker that can kill this attacker
+                            for (blocker_idx, blocker_card) in battlefield.iter().enumerate() {
+                                if used_blockers.contains(&blocker_idx) || self.attacking_creatures.contains(&blocker_idx) {
+                                    continue; // Already used or is attacking
+                                }
+                                
+                                let blocker_power = crate::creature::creature_stats(blocker_card)
+                                    .map(|stats| stats.power as i32)
+                                    .unwrap_or(0);
+                                
+                                if blocker_power >= attacker_toughness {
+                                    // This blocker can kill the attacker
+                                    decisions.push((blocker_idx, *attacker_idx));
+                                    used_blockers.insert(blocker_idx);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        decisions
+                    };
+                    
+                    // Now insert decisions into blocking_map (borrow released)
+                    for (blocker_idx, attacker_idx) in blocking_decisions {
+                        self.blocking_map.insert(blocker_idx, attacker_idx);
+                    }
                 } else if !self.waiting_for_block_decision {
                     // Wait for player to declare blockers
                     self.waiting_for_block_decision = true;
